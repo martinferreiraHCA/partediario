@@ -2,11 +2,20 @@
 
 const CLAVE = 'ge.settings.v1';
 
+/*
+ * Datos del liceo. Vienen configurados de fábrica para que nadie tenga que
+ * pegar direcciones a mano: alcanza con abrir la aplicación e ingresar con la
+ * cuenta de Google. Si algún día se vuelve a implementar el backend o se cambia
+ * el proyecto de Google Cloud, se actualizan acá.
+ */
+const BACKEND = 'https://script.google.com/macros/s/AKfycbzjW6PyzjQxixVbLnZ6fhwHdlpNxjmq5ag-oa8d-3LR_-QFxm4dfx6dvsQNRLNMBxVt/exec';
+const CLIENT_ID = '887904782640-u0qiu82chf26tg1n5q5skrour59qnfu7.apps.googleusercontent.com';
+
 const POR_DEFECTO = {
-  modo: 'demo',            // 'demo' (localStorage) | 'google' (Apps Script)
-  apiUrl: '',              // URL /exec de la aplicación web de Apps Script
+  modo: 'google',          // 'google' (Apps Script + Drive) | 'demo' (datos de ejemplo locales)
+  apiUrl: BACKEND,         // URL /exec de la aplicación web de Apps Script
   idToken: '',             // ID token de Google del ingreso actual
-  clientId: '',            // ID de cliente OAuth (lo publica el backend; se cachea acá)
+  clientId: CLIENT_ID,     // ID de cliente OAuth; el backend puede publicar otro
   emailSesion: '',         // último correo con el que se ingresó
   formUrl: '',             // URL del Google Form de aviso de inasistencia
   hojaUrl: '',             // URL de la Google Sheet (para "abrir en Sheets")

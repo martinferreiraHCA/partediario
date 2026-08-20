@@ -49,6 +49,13 @@ Estructura que se crea en Drive con la configuración inicial:
    └── 05 · Exportaciones    → copias y respaldos
 ```
 
+## Configuración de fábrica
+
+La aplicación ya viene apuntando al backend del liceo: la URL de Apps Script y el ID de cliente de
+Google están en las constantes `BACKEND` y `CLIENT_ID`, arriba de `assets/js/settings.js`. Quien abre
+la página sólo tiene que ingresar con su cuenta de Google. Si se vuelve a implementar el backend o se
+cambia el proyecto de Google Cloud, se actualizan esas dos constantes.
+
 ## Probarla sin configurar nada
 
 Abrí la aplicación publicada y usá el **modo demostración**: genera un horario completo, avisos de

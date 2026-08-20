@@ -88,7 +88,9 @@ export async function obtenerClientId() {
   const guardado = getSettings().clientId;
   try {
     const resp = await configPublica();
-    const clientId = resp.clientId || '';
+    // Antes de la configuración inicial el backend todavía no publica el ID de
+    // cliente: en ese caso vale el que trae la aplicación de fábrica.
+    const clientId = resp.clientId || guardado;
     if (clientId !== guardado) setSettings({ clientId });
     sesion.clientId = clientId;
     sesion.instalado = resp.instalado !== false;

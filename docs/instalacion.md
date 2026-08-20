@@ -75,6 +75,11 @@ verifique quién está entrando.
 1. Abrí la aplicación publicada → **Configuración**.
 2. En *Conexión con Google Drive*: modo **Google Drive (Apps Script)**, pegá la URL `/exec` y tocá
    **Probar conexión** (tiene que responder «Conexión correcta»).
+
+   > En este repositorio la URL del backend y el ID de cliente ya vienen cargados de fábrica
+   > (constantes `BACKEND` y `CLIENT_ID`, arriba de `assets/js/settings.js`), así que los campos
+   > aparecen completos. Si algún día se crea una implementación nueva de Apps Script o se cambia el
+   > proyecto de Google Cloud, se actualizan ahí y listo: nadie tiene que pegar direcciones a mano.
 3. En *Configuración inicial en Drive* completá:
    - **Nombre del liceo**.
    - **ID de cliente OAuth** (el del paso 2). Cargalo acá: una vez instalado, el sistema sólo acepta
