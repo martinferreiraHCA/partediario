@@ -5,7 +5,6 @@ const CLAVE = 'ge.settings.v1';
 const POR_DEFECTO = {
   modo: 'demo',            // 'demo' (localStorage) | 'google' (Apps Script)
   apiUrl: '',              // URL /exec de la aplicación web de Apps Script
-  apiToken: '',            // código de acceso personal (alternativa al ingreso con Google)
   idToken: '',             // ID token de Google del ingreso actual
   clientId: '',            // ID de cliente OAuth (lo publica el backend; se cachea acá)
   emailSesion: '',         // último correo con el que se ingresó

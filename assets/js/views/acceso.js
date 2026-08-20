@@ -3,7 +3,7 @@
 import { el, clear } from '../utils.js';
 import { avisoError, avisoOk } from '../ui.js';
 import { getSettings, setSettings } from '../settings.js';
-import { iniciarSesionGoogle, iniciarSesionConCodigo, obtenerClientId, sesion } from '../sesion.js';
+import { iniciarSesionGoogle, obtenerClientId, sesion } from '../sesion.js';
 import { prepararIngresoGoogle } from '../google.js';
 import { cargar } from '../db.js';
 
@@ -12,8 +12,6 @@ export function render(host, { alEntrar }) {
   const url = el('input', { type: 'url', value: ajustes.apiUrl, placeholder: 'https://script.google.com/macros/s/…/exec' });
   const zonaGoogle = el('div', { style: 'min-height:44px;display:flex;justify-content:center' });
   const mensaje = el('div', {});
-  const codigo = el('input', { type: 'text', placeholder: 'Ej.: 4KDF2-8HTQ1', autocomplete: 'off' });
-
   const tarjeta = el('form', { class: 'card card-pad stack', style: 'max-width:520px;margin:6vh auto' }, [
     el('h2', {}, 'Ingresar al sistema'),
     el('p', { class: 'small muted' },
@@ -24,14 +22,9 @@ export function render(host, { alEntrar }) {
       el('span', { class: 'hint' }, 'La provee quien administra el sistema. Queda guardada en este navegador.'),
     ]),
     zonaGoogle,
+    el('p', { class: 'hint', style: 'text-align:center' },
+      'Sólo pueden entrar las cuentas de Google registradas por el liceo. Si la tuya no funciona, pedile a un administrador que la agregue.'),
     el('div', { class: 'sep' }),
-    el('details', {}, [
-      el('summary', { class: 'small muted' }, 'No tengo cuenta de Google: entrar con código de acceso'),
-      el('div', { class: 'stack', style: 'margin-top:10px' }, [
-        el('label', { class: 'field' }, [el('span', {}, 'Código de acceso'), codigo]),
-        el('button', { class: 'btn', type: 'submit' }, 'Entrar con código'),
-      ]),
-    ]),
     el('div', { class: 'row' }, [
       el('button', {
         class: 'btn btn-ghost', type: 'button',
@@ -98,21 +91,7 @@ export function render(host, { alEntrar }) {
 
   url.addEventListener('change', prepararGoogle);
 
-  tarjeta.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    if (!url.value.trim()) { avisoError('Falta la URL de la aplicación web de Apps Script.'); return; }
-    if (!codigo.value.trim()) { avisoError('Ingresá tu código de acceso o usá el ingreso con Google.'); return; }
-    setSettings({ modo: 'google', apiUrl: url.value.trim() });
-    try {
-      await iniciarSesionConCodigo(codigo.value.trim());
-      if (!sesion.autenticado) { avisoError('El código de acceso no es válido o está deshabilitado.'); return; }
-      await cargar();
-      avisoOk(`Bienvenido/a ${sesion.nombre || ''}`.trim());
-      alEntrar();
-    } catch (e) {
-      avisoError(e.message || 'No se pudo iniciar sesión.');
-    }
-  });
+  tarjeta.addEventListener('submit', (ev) => ev.preventDefault());
 
   host.append(tarjeta);
   prepararGoogle();

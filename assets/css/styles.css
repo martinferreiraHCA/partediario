@@ -78,6 +78,7 @@ button,input,select,textarea{font:inherit; color:inherit}
 .brand-text span{font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 
 .nav{display:flex; flex-direction:column; gap:2px; padding:6px 10px; overflow:auto}
+.nav-item[hidden]{display:none}
 .nav-item{
   display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:10px;
   color:var(--muted); font-size:14px; font-weight:500;

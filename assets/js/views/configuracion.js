@@ -1,9 +1,9 @@
 /* Configuración: conexión con la carpeta de Drive, usuarios, turnos y datos. */
 
 import { el, clear, descargar, fmtFechaHora, uid } from '../utils.js';
-import { tarjeta, modalFormulario, confirmar, avisoOk, avisoError, avisoAtencion, vacio } from '../ui.js';
+import { tarjeta, modalFormulario, confirmar, avisoOk, avisoError, vacio } from '../ui.js';
 import { getSettings, setSettings } from '../settings.js';
-import { sesion, resolverSesion, iniciarSesionGoogle, iniciarSesionConCodigo, cerrarSesion, obtenerClientId, puede, ETIQUETA_ROL, PERMISOS_POR_ROL } from '../sesion.js';
+import { sesion, resolverSesion, iniciarSesionGoogle, cerrarSesion, obtenerClientId, puede, ETIQUETA_ROL, PERMISOS_POR_ROL } from '../sesion.js';
 import { prepararIngresoGoogle } from '../google.js';
 import { apiPost, pingApi } from '../api.js';
 import { estado, cargar, guardarConfig, reiniciarDemo } from '../db.js';
@@ -39,7 +39,6 @@ function seccionConexion(ctx, ajustes) {
   ]);
   const url = el('input', { type: 'url', value: ajustes.apiUrl, placeholder: 'https://script.google.com/macros/s/AKfy…/exec' });
   const refresco = el('input', { type: 'number', min: 0, max: 3600, value: ajustes.autoRefresh });
-  const codigo = el('input', { type: 'text', value: ajustes.apiToken, placeholder: 'Sólo si entrás con código' });
 
   const identidad = el('div', { class: 'stack' });
   const zonaGoogle = el('div', { style: 'min-height:44px' });
@@ -55,13 +54,12 @@ function seccionConexion(ctx, ajustes) {
         sesion.foto ? el('img', { src: sesion.foto, alt: '', width: 32, height: 32, style: 'border-radius:50%' }) : null,
         el('strong', {}, sesion.nombre || sesion.email || 'Identificado'),
         el('span', { class: 'chip pri' }, ETIQUETA_ROL[sesion.rol] || sesion.rol),
-        sesion.metodo === 'google' ? el('span', { class: 'chip ok' }, 'Cuenta de Google') : el('span', { class: 'chip' }, 'Código de acceso'),
+        el('span', { class: 'chip ok' }, 'Cuenta de Google'),
         sesion.carpetaUrl ? el('a', { class: 'btn btn-sm', href: sesion.carpetaUrl, target: '_blank', rel: 'noopener' }, '📁 Abrir carpeta en Drive') : null,
         el('button', {
           class: 'btn btn-sm', type: 'button',
           onclick: async () => {
             await cerrarSesion();
-            codigo.value = '';
             pintarIdentidad();
             ctx.refrescar();
           },
@@ -115,7 +113,6 @@ function seccionConexion(ctx, ajustes) {
     setSettings({
       modo: modo.value,
       apiUrl: url.value.trim(),
-      apiToken: codigo.value.trim(),
       autoRefresh: Number(refresco.value) || 0,
     });
     try {
@@ -139,10 +136,6 @@ function seccionConexion(ctx, ajustes) {
         el('span', {}, 'URL de la aplicación web de Apps Script'), url,
         el('span', { class: 'hint' }, 'Se obtiene al implementar el proyecto de Apps Script como aplicación web.'),
       ]),
-      el('label', { class: 'field' }, [
-        el('span', {}, 'Código de acceso (alternativa a Google)'), codigo,
-        el('span', { class: 'hint' }, 'Sólo para quien no tenga cuenta de Google o para equipos compartidos.'),
-      ]),
     ]),
     identidad,
     zonaGoogle,
@@ -163,21 +156,6 @@ function seccionConexion(ctx, ajustes) {
           }
         },
       }, '🔌 Probar conexión'),
-      el('button', {
-        class: 'btn', type: 'button',
-        onclick: async () => {
-          if (!codigo.value.trim()) { avisoAtencion('Ingresá tu código de acceso o usá el botón de Google.'); return; }
-          setSettings({ modo: 'google', apiUrl: url.value.trim() });
-          try {
-            await iniciarSesionConCodigo(codigo.value.trim());
-            await cargar();
-            avisoOk(`Bienvenido/a ${sesion.nombre || ''}`.trim());
-            ctx.refrescar();
-          } catch (e) {
-            avisoError(e.message || 'No se pudo iniciar sesión.');
-          }
-        },
-      }, '🔑 Entrar con código'),
     ]),
   ]));
 }
@@ -227,6 +205,10 @@ function seccionIngresoGoogle(ctx) {
 function seccionInstalacion(ctx, ajustes) {
   const nombre = el('input', { type: 'text', value: estado.config.liceo || 'Liceo', placeholder: 'Nombre del liceo' });
   const carpeta = el('input', { type: 'text', placeholder: 'ID de una carpeta existente (opcional)' });
+  const clientIdInstalacion = el('input', {
+    type: 'text', value: estado.config.clientId || '',
+    placeholder: '1234567890-abcdefg.apps.googleusercontent.com',
+  });
   const salida = el('div', { class: 'stack' });
 
   const instalar = async (ev) => {
@@ -237,7 +219,11 @@ function seccionInstalacion(ctx, ajustes) {
     ev.target.disabled = true;
     clear(salida).append(el('p', { class: 'muted' }, 'Creando la estructura en Drive…'));
     try {
-      const resp = await apiPost('instalar', { liceo: nombre.value.trim(), carpetaId: carpeta.value.trim() });
+      const resp = await apiPost('instalar', {
+        liceo: nombre.value.trim(),
+        carpetaId: carpeta.value.trim(),
+        clientId: clientIdInstalacion.value.trim(),
+      });
       clear(salida).append(
         el('p', { class: 'chip ok', style: 'display:inline-block' }, 'Configuración inicial completada'),
         el('div', { class: 'stack' }, [
@@ -245,15 +231,18 @@ function seccionInstalacion(ctx, ajustes) {
           enlace('⚙️ Archivo de configuración (usuarios, turnos, años)', resp.configUrl),
           enlace('📋 Formulario de aviso de inasistencia', resp.formUrl),
           enlace('📊 Planilla de respuestas', resp.respuestasUrl),
-          resp.emailAdmin ? el('p', { class: 'chip ok', style: 'display:inline-block' },
-            `Administrador: ${resp.emailAdmin} — vas a poder entrar con esa cuenta de Google`) : null,
-          resp.codigoAdmin ? el('p', { class: 'chip warn', style: 'display:inline-block' },
-            `Código de acceso de respaldo: ${resp.codigoAdmin} (guardalo; también figura en la hoja Usuarios)`) : null,
+          (resp.administradores || []).length
+            ? el('div', { class: 'stack' }, [
+                el('p', { class: 'small muted' }, 'Administradores dados de alta:'),
+                el('div', { class: 'row' }, resp.administradores.map(a =>
+                  el('span', { class: 'chip ok' }, `${a.nombre} · ${a.email}`))),
+              ])
+            : el('p', { class: 'small muted' }, 'Los usuarios ya estaban cargados: no se modificó ninguno.'),
         ]),
       );
+      if (resp.clientId) setSettings({ clientId: resp.clientId });
       if (resp.formUrl) setSettings({ formUrl: resp.formUrl });
       if (resp.respuestasUrl) setSettings({ hojaUrl: resp.respuestasUrl });
-      if (resp.codigoAdmin) setSettings({ apiToken: resp.codigoAdmin });
       await resolverSesion();
       await cargar();
       avisoOk('Estructura creada en Google Drive.');
@@ -281,6 +270,11 @@ function seccionInstalacion(ctx, ajustes) {
       el('label', { class: 'field' }, [
         el('span', {}, 'Carpeta existente (opcional)'), carpeta,
         el('span', { class: 'hint' }, 'Si ya tenés una carpeta, pegá su ID y se usará esa.'),
+      ]),
+      el('label', { class: 'field', style: 'grid-column:1 / -1' }, [
+        el('span', {}, 'ID de cliente OAuth de Google'), clientIdInstalacion,
+        el('span', { class: 'hint' },
+          'Cargalo acá: después de instalar, el acceso queda restringido a las cuentas autorizadas y sin este dato nadie podría ingresar. Si te lo salteás, se puede cargar desde el editor de Apps Script con definirClientId().'),
       ]),
     ]),
     el('div', { class: 'row' }, [
@@ -321,13 +315,12 @@ async function seccionUsuarios(ctx) {
     if (error) { cuerpo.append(el('p', { class: 'chip warn', style: 'display:inline-block;padding:10px' }, error)); return; }
     if (!lista.length) { cuerpo.append(vacio('Todavía no hay usuarios cargados.', '👤')); return; }
     cuerpo.append(el('div', { class: 'table-wrap' }, el('table', { class: 'tbl' }, [
-      el('thead', {}, el('tr', {}, ['Nombre', 'Correos de Google', 'Rol', 'Código de acceso', 'Activo', ''].map(t => el('th', {}, t)))),
+      el('thead', {}, el('tr', {}, ['Nombre', 'Correos de Google', 'Rol', 'Activo', ''].map(t => el('th', {}, t)))),
       el('tbody', {}, lista.map(u => el('tr', {}, [
         el('td', {}, u.nombre || '—'),
         el('td', { class: 'small muted' },
           (u.emails && u.emails.length ? u.emails : [u.email].filter(Boolean)).join(' · ') || '—'),
         el('td', {}, el('span', { class: 'chip pri' }, ETIQUETA_ROL[u.rol] || u.rol)),
-        el('td', { class: 'mono small' }, u.codigo || '—'),
         el('td', {}, u.activo === false ? el('span', { class: 'chip warn' }, 'no') : el('span', { class: 'chip ok' }, 'sí')),
         el('td', { class: 'actions' }, [
           el('button', {
@@ -356,7 +349,7 @@ async function seccionUsuarios(ctx) {
   return tarjeta('Usuarios y accesos',
     el('div', { class: 'card-pad stack' }, [
       el('p', { class: 'small muted' },
-        'Las cuentas se administran en la hoja «Usuarios» del archivo de configuración de Drive; desde acá se edita lo mismo. Cada persona entra con su cuenta de Google (puede tener varios correos asociados) o, si no tiene, con un código de acceso.'),
+        'Las cuentas se administran en la hoja «Usuarios» del archivo de configuración de Drive; desde acá se edita lo mismo. Se entra únicamente con cuenta de Google: sin correo registrado no hay acceso. Una misma persona puede tener varios correos asociados.'),
       cuerpo,
       el('div', { class: 'row' }, [
         el('button', { class: 'btn btn-primary', type: 'button', onclick: () => dialogoUsuario(ctx, null) }, '＋ Agregar usuario'),
@@ -382,8 +375,8 @@ async function dialogoUsuario(ctx, usuario) {
     campos: [
       { name: 'nombre', label: 'Nombre y apellido', requerido: true, ancho: 'full' },
       {
-        name: 'email', label: 'Correo principal de Google', tipo: 'text',
-        hint: 'Con este correo entra a la aplicación.',
+        name: 'email', label: 'Correo principal de Google', tipo: 'text', requerido: true,
+        hint: 'Sin correo registrado no se puede entrar al sistema.',
       },
       {
         name: 'emailsAdicionales', label: 'Otros correos de la misma persona', tipo: 'text', ancho: 'full',
@@ -392,10 +385,6 @@ async function dialogoUsuario(ctx, usuario) {
       {
         name: 'rol', label: 'Rol', tipo: 'select',
         opciones: Object.keys(PERMISOS_POR_ROL).map(r => ({ valor: r, texto: ETIQUETA_ROL[r] || r })),
-      },
-      {
-        name: 'codigo', label: 'Código de acceso (alternativa a Google)',
-        hint: 'Sirve para quien no tenga cuenta de Google. Si se deja vacío se genera uno.',
       },
       { name: 'activo', label: 'Acceso habilitado', tipo: 'checkbox', valor: true },
     ],
@@ -410,7 +399,6 @@ async function dialogoUsuario(ctx, usuario) {
         ...(usuario || {}),
         ...datos,
         id: usuario ? usuario.id : uid('usr'),
-        codigo: datos.codigo || generarCodigo(),
       },
     });
     avisoOk('Usuario guardado.');
@@ -418,13 +406,6 @@ async function dialogoUsuario(ctx, usuario) {
   } catch (e) {
     avisoError(e.message || 'No se pudo guardar el usuario.');
   }
-}
-
-function generarCodigo() {
-  const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let s = '';
-  for (let i = 0; i < 10; i++) s += alfabeto[Math.floor(Math.random() * alfabeto.length)];
-  return `${s.slice(0, 5)}-${s.slice(5)}`;
 }
 
 /* ---------------- institución ---------------- */

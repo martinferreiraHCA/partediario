@@ -42,7 +42,7 @@ var HOJAS = {
 };
 
 var ENCABEZADOS = {
-  usuarios: ['id', 'nombre', 'email', 'rol', 'codigo', 'activo', 'observaciones', 'emailsAdicionales'],
+  usuarios: ['id', 'nombre', 'email', 'emailsAdicionales', 'rol', 'activo', 'observaciones'],
   turnos: ['turno', 'nombre', 'modulo', 'inicio', 'fin'],
   anios: ['anio', 'estado', 'origen', 'actualizado', 'clases'],
   motivos: ['motivo'],
@@ -53,6 +53,24 @@ var ENCABEZADOS = {
   partes: ['id', 'fecha', 'hora', 'turno', 'docente', 'grupo', 'materia', 'salon', 'motivo',
     'cobertura', 'observaciones', 'origen', 'editado', 'inasistenciaId', 'cerrado'],
 };
+
+/**
+ * Personas que quedan como administradoras al ejecutar la configuración inicial.
+ * Se puede editar acá antes de instalar, o cambiar después desde la aplicación
+ * o directamente en la hoja «Usuarios» de la carpeta de Drive.
+ */
+var ADMINISTRADORES_INICIALES = [
+  {
+    nombre: 'Florencia Austria',
+    email: 'florenciaaustria03@gmail.com',
+    emailsAdicionales: '',
+  },
+  {
+    nombre: 'Martín Ferreira',
+    email: 'martinfp642@gmail.com',
+    emailsAdicionales: 'martinferreira@hca.edu.uy',
+  },
+];
 
 var PERMISOS_POR_ROL = {
   admin: ['verInasistencias', 'editarInasistencias', 'verHorarios', 'editarHorarios',
@@ -150,7 +168,7 @@ function manejar(params) {
       if (estaInstalado() && !tienePermiso(usuario, 'administrar')) {
         return responder({ ok: false, error: 'Sólo un administrador puede volver a ejecutar la configuración inicial.' });
       }
-      return responder(instalar(params.liceo, params.carpetaId));
+      return responder(instalar(params.liceo, params.carpetaId, params.clientId));
     }
 
     if (!estaInstalado()) {
@@ -172,9 +190,9 @@ function manejar(params) {
         return responder({ ok: false, codigo: 'sin_autorizacion',
           error: 'La cuenta ' + identidad.email + ' no figura entre los usuarios autorizados.' });
       }
-      if (identidad.motivo === 'codigo_invalido' || identidad.motivo === 'sin_credenciales') {
+      if (identidad.motivo === 'sin_credenciales') {
         return responder({ ok: false, codigo: 'sin_credenciales',
-          error: 'Necesitás identificarte para realizar esta acción.' });
+          error: 'Necesitás ingresar con tu cuenta de Google para realizar esta acción.' });
       }
       return responder({ ok: false, codigo: 'sin_permisos',
         error: 'No tenés permisos para realizar esta acción (' + accion + ').' });
@@ -213,9 +231,25 @@ function responder(objeto) {
 
 /** Se puede ejecutar a mano desde el editor de Apps Script. */
 function configuracionInicial() {
-  var resultado = instalar('Liceo', '');
+  var resultado = instalar('Liceo', '', '');
   Logger.log(JSON.stringify(resultado, null, 2));
   return resultado;
+}
+
+/**
+ * Carga el ID de cliente OAuth desde el editor de Apps Script.
+ * Sirve como salida de emergencia: sin ID de cliente nadie puede ingresar con
+ * Google y, por lo tanto, nadie puede configurarlo desde la aplicación.
+ * Uso: escribir el valor entre comillas y ejecutar la función.
+ */
+function definirClientId(clientId) {
+  var valor = String(clientId || 'PEGAR-ACA-EL-ID-DE-CLIENTE').trim();
+  if (valor.indexOf('apps.googleusercontent.com') < 0) {
+    throw new Error('Ese no parece un ID de cliente OAuth (tiene que terminar en apps.googleusercontent.com).');
+  }
+  escribirGeneral({ clientId: valor });
+  Logger.log('ID de cliente guardado: ' + valor);
+  return valor;
 }
 
 function props() { return PropertiesService.getScriptProperties(); }
@@ -243,7 +277,7 @@ function planillaEn(carpeta, nombre) {
   return ss;
 }
 
-function instalar(nombreLiceo, carpetaId) {
+function instalar(nombreLiceo, carpetaId, clientId) {
   var liceo = (nombreLiceo || 'Liceo').trim() || 'Liceo';
   var raiz;
   if (carpetaId) {
@@ -291,6 +325,7 @@ function instalar(nombreLiceo, carpetaId) {
   if (!leerGeneral().liceo) {
     escribirGeneral({ liceo: liceo, anioActivo: new Date().getFullYear() });
   }
+  if (clientId) escribirGeneral({ clientId: String(clientId).trim() });
   if (!leerTurnos().length) escribirTurnos(turnosPorDefecto());
   if (!leerMotivos().length) escribirMotivos(['Inasistencia', 'Licencia médica', 'Licencia por estudio',
     'Paro', 'Actividad institucional', 'Otro']);
@@ -301,21 +336,8 @@ function instalar(nombreLiceo, carpetaId) {
   // Formulario de aviso de inasistencia.
   var form = asegurarFormulario(cInasistencias, ssInas, liceo);
 
-  // Primer usuario administrador.
-  var codigoAdmin = '';
-  var emailAdmin = '';
-  var usuarios = leerUsuarios();
-  if (!usuarios.length) {
-    var email = '';
-    try { email = Session.getEffectiveUser().getEmail(); } catch (e) { email = ''; }
-    emailAdmin = email;
-    codigoAdmin = generarCodigo();
-    guardarUsuario({
-      id: 'usr_admin', nombre: 'Administrador', email: email, rol: 'admin',
-      codigo: codigoAdmin, activo: true, emailsAdicionales: '',
-      observaciones: 'Creado por la configuración inicial. Puede entrar con esta cuenta de Google o con el código.',
-    });
-  }
+  // Administradores iniciales: sin correo registrado nadie puede entrar.
+  var administradores = altaAdministradoresIniciales();
 
   asegurarDisparadores();
 
@@ -330,8 +352,8 @@ function instalar(nombreLiceo, carpetaId) {
     respuestasUrl: ssInas.getUrl(),
     formUrl: form ? form.getPublishedUrl() : '',
     formEdicionUrl: form ? form.getEditUrl() : '',
-    codigoAdmin: codigoAdmin,
-    emailAdmin: emailAdmin,
+    administradores: administradores,
+    clientId: String(leerGeneral().clientId || ''),
   };
 }
 
@@ -513,7 +535,6 @@ function leerUsuarios() {
       emails: todos,
       emailsAdicionales: adicionales.join(', '),
       rol: String(u.rol || 'lectura'),
-      codigo: String(u.codigo || ''),
       activo: !(String(u.activo).toLowerCase() === 'no' || u.activo === false),
       observaciones: String(u.observaciones || ''),
     };
@@ -533,7 +554,7 @@ function identificar(params) {
   var usuarios = leerUsuarios();
   if (!usuarios.length) return { usuario: bootstrap, metodo: 'bootstrap', email: '', motivo: '' };
 
-  // 1. Ingreso con la cuenta de Google.
+  // Único modo de entrar: la cuenta de Google tiene que figurar en la hoja «Usuarios».
   var idToken = String((params && params.idToken) || '').trim();
   if (idToken) {
     var identidad = verificarIdToken(idToken);
@@ -546,17 +567,6 @@ function identificar(params) {
     }
     return { usuario: null, metodo: 'google', email: identidad.email,
       nombre: identidad.nombre, motivo: 'sin_autorizacion' };
-  }
-
-  // 2. Código de acceso personal.
-  var codigo = String((params && params.token) || '').trim();
-  if (codigo) {
-    for (var j = 0; j < usuarios.length; j++) {
-      if (usuarios[j].codigo && usuarios[j].codigo === codigo && usuarios[j].activo) {
-        return { usuario: usuarios[j], metodo: 'codigo', email: usuarios[j].email, motivo: '' };
-      }
-    }
-    return { usuario: null, metodo: 'codigo', email: '', motivo: 'codigo_invalido' };
   }
 
   return { usuario: null, metodo: '', email: '', motivo: 'sin_credenciales' };
@@ -606,6 +616,9 @@ function tienePermiso(usuario, permiso) {
 
 function guardarUsuario(usuario) {
   if (!usuario || !usuario.nombre) return { ok: false, error: 'Falta el nombre del usuario.' };
+  if (!usuario.email && !usuario.emailsAdicionales) {
+    return { ok: false, error: 'Cada usuario necesita al menos un correo de Google: es la única forma de entrar.' };
+  }
   var adicionales = usuario.emailsAdicionales;
   if (Object.prototype.toString.call(adicionales) === '[object Array]') adicionales = adicionales.join(', ');
   var item = {
@@ -613,7 +626,6 @@ function guardarUsuario(usuario) {
     nombre: usuario.nombre,
     email: String(usuario.email || '').trim().toLowerCase(),
     rol: usuario.rol || 'lectura',
-    codigo: usuario.codigo || generarCodigo(),
     activo: usuario.activo === false ? false : true,
     observaciones: usuario.observaciones || '',
     emailsAdicionales: String(adicionales || '').toLowerCase(),
@@ -622,18 +634,60 @@ function guardarUsuario(usuario) {
   return { ok: true, usuario: item };
 }
 
+/**
+ * Da de alta a los administradores iniciales (y a la cuenta que instala, que de
+ * todos modos es dueña de la carpeta de Drive). No pisa a quien ya exista.
+ */
+function altaAdministradoresIniciales() {
+  var existentes = leerUsuarios();
+  var registrados = {};
+  for (var i = 0; i < existentes.length; i++) {
+    for (var e = 0; e < existentes[i].emails.length; e++) registrados[existentes[i].emails[e]] = true;
+  }
+
+  var pendientes = ADMINISTRADORES_INICIALES.slice();
+  var cuentaInstala = '';
+  try { cuentaInstala = String(Session.getEffectiveUser().getEmail() || '').toLowerCase(); } catch (e2) { cuentaInstala = ''; }
+  if (cuentaInstala && !registrados[cuentaInstala]) {
+    var yaEnLista = false;
+    for (var p = 0; p < pendientes.length; p++) {
+      var correos = (pendientes[p].email + ',' + (pendientes[p].emailsAdicionales || '')).toLowerCase();
+      if (correos.indexOf(cuentaInstala) >= 0) yaEnLista = true;
+    }
+    if (!yaEnLista) {
+      pendientes.push({
+        nombre: 'Cuenta que instaló el sistema',
+        email: cuentaInstala,
+        emailsAdicionales: '',
+        observaciones: 'Es dueña de la carpeta de Drive. Se puede quitar desde la hoja «Usuarios».',
+      });
+    }
+  }
+
+  var altas = [];
+  for (var k = 0; k < pendientes.length; k++) {
+    var admin = pendientes[k];
+    var correo = String(admin.email || '').trim().toLowerCase();
+    if (!correo || registrados[correo]) continue;
+    guardarUsuario({
+      nombre: admin.nombre,
+      email: correo,
+      emailsAdicionales: admin.emailsAdicionales || '',
+      rol: 'admin',
+      activo: true,
+      observaciones: admin.observaciones || 'Administrador inicial',
+    });
+    registrados[correo] = true;
+    altas.push({ nombre: admin.nombre, email: correo, emailsAdicionales: admin.emailsAdicionales || '' });
+  }
+  return altas;
+}
+
 function eliminarUsuario(id, email) {
   var h = hoja(HOJAS.usuarios);
   if (id) eliminarFila(h, 'id', id);
   else if (email) eliminarFila(h, 'email', email);
   return { ok: true };
-}
-
-function generarCodigo() {
-  var alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  var s = '';
-  for (var i = 0; i < 10; i++) s += alfabeto.charAt(Math.floor(Math.random() * alfabeto.length));
-  return s.slice(0, 5) + '-' + s.slice(5);
 }
 
 /* ============================================================

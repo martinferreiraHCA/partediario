@@ -25,11 +25,8 @@ function urlBase() {
 }
 
 function credenciales() {
-  const { apiToken, idToken } = getSettings();
-  const datos = {};
-  if (idToken) datos.idToken = idToken;
-  if (apiToken) datos.token = apiToken;
-  return datos;
+  const { idToken } = getSettings();
+  return idToken ? { idToken } : {};
 }
 
 async function leerRespuesta(resp) {

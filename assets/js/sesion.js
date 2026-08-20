@@ -6,12 +6,12 @@
  * Cada persona puede tener varios correos asociados (institucional, personal…).
  *
  * Formas de entrar:
- *   1. Con la cuenta de Google (recomendada): el navegador obtiene un ID token
- *      firmado por Google y el backend lo verifica y busca el correo.
- *   2. Con un código de acceso personal, para quien no tenga cuenta de Google
- *      o para equipos compartidos.
+ * Se entra únicamente con la cuenta de Google: el navegador obtiene un ID token
+ * firmado por Google, el backend lo verifica y busca el correo entre los
+ * usuarios autorizados. Sin correo registrado no se entra.
  *
- * En modo demostración (sin backend) se trabaja con un rol elegido localmente.
+ * En modo demostración (sin backend, datos de ejemplo en este navegador) se
+ * trabaja con un rol elegido localmente.
  */
 
 import { apiPost, configPublica } from './api.js';
@@ -101,7 +101,7 @@ export async function obtenerClientId() {
 
 /** Consulta al backend quién es la persona identificada con las credenciales guardadas. */
 export async function resolverSesion() {
-  const { modo, idToken, apiToken } = getSettings();
+  const { modo, idToken } = getSettings();
   sesion.modo = modo;
   if (modo !== 'google') return modoDemo();
 
@@ -109,7 +109,7 @@ export async function resolverSesion() {
     setSettings({ idToken: '' });
     return aplicar({ autenticado: false, modo: 'google', rol: 'lectura', permisos: [], motivo: 'sesion_vencida' });
   }
-  if (!idToken && !apiToken) {
+  if (!idToken) {
     return aplicar({ autenticado: false, modo: 'google', rol: 'lectura', permisos: [], motivo: 'sin_credenciales' });
   }
 
@@ -132,18 +132,13 @@ export async function iniciarSesionGoogle(credencial) {
   return estado;
 }
 
-export async function iniciarSesionConCodigo(codigo) {
-  setSettings({ apiToken: String(codigo || '').trim(), idToken: '' });
-  return resolverSesion();
-}
-
 export async function renovarSesionGoogle() {
   await pedirCredencial();
 }
 
 export async function cerrarSesion() {
   await olvidarCuenta();
-  setSettings({ apiToken: '', idToken: '', emailSesion: '' });
+  setSettings({ idToken: '', emailSesion: '' });
   return aplicar({
     autenticado: false, modo: getSettings().modo, rol: 'lectura', permisos: [],
     nombre: '', email: '', foto: '', motivo: 'sin_credenciales',

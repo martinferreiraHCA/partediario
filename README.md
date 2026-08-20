@@ -59,15 +59,15 @@ las pantallas antes de conectar Google.
 
 1. **Publicar el frontend**: en el repositorio, *Settings → Pages → Source: GitHub Actions*
    (el workflow `.github/workflows/pages.yml` ya está incluido) o *Deploy from branch* apuntando a la raíz.
-2. **Crear el backend en Drive**: seguí [`docs/instalacion.md`](docs/instalacion.md).
+2. **Crear el ID de cliente OAuth** de Google, con el origen de tu GitHub Pages.
+3. **Crear el backend en Drive**: seguí [`docs/instalacion.md`](docs/instalacion.md).
    Resumen: crear un proyecto de Apps Script, pegar `apps-script/Codigo.gs`, implementarlo como
    aplicación web y ejecutar la **configuración inicial** desde la pantalla *Configuración*.
-3. **Cargar el horario del año**: *Horarios institucionales → Subir horario* (XLSX, ODS o CSV).
-4. **Habilitar el ingreso con Google**: creá un ID de cliente OAuth y cargalo en
-   *Configuración → Ingreso con cuenta de Google* (pasos en la misma guía).
-5. **Dar accesos**: *Configuración → Usuarios y accesos*. Cada persona entra con su cuenta de Google
-   —puede tener **varios correos asociados**, institucional y personal— o con un código, si no tiene
-   cuenta de Google.
+4. **Cargar el horario del año**: *Horarios institucionales → Subir horario* (XLSX, ODS o CSV).
+5. **Dar accesos**: *Configuración → Usuarios y accesos*. Se entra **únicamente con cuenta de Google**
+   y sólo si el correo figura en la hoja «Usuarios»; una misma persona puede tener **varios correos
+   asociados** (institucional y personal). La instalación deja creados los administradores definidos
+   en `ADMINISTRADORES_INICIALES`, arriba de `apps-script/Codigo.gs`.
 
 ## Roles
 
@@ -86,7 +86,7 @@ persona entre con cualquiera de sus cuentas de Google y conserve su rol.
 
 El ingreso se resuelve así: el navegador obtiene un ID token de Google, el backend lo verifica contra
 `oauth2.googleapis.com/tokeninfo`, comprueba que el `aud` coincida con el ID de cliente configurado y
-busca el correo entre los usuarios autorizados.
+busca el correo entre los usuarios autorizados. Si no está, no entra: no hay contraseñas ni códigos.
 
 ## Estructura del repositorio
 
