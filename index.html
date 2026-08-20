@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gestión Educativa – Liceo</title>
+<meta name="description" content="Horarios institucionales, inasistencias docentes, coberturas y parte diario.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏫</text></svg>">
+<link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+<div id="app" class="app">
+
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">GE</div>
+      <div class="brand-text">
+        <strong>Gestión Educativa</strong>
+        <span id="brand-liceo">Liceo</span>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <a class="nav-item" href="#/inicio"        data-view="inicio"><span class="ico">🏠</span> Inicio</a>
+      <a class="nav-item" href="#/inasistencias" data-view="inasistencias"><span class="ico">🔔</span> Inasistencias <span class="badge" id="badge-nuevas" hidden>0</span></a>
+      <a class="nav-item" href="#/horarios"      data-view="horarios"><span class="ico">📅</span> Horarios</a>
+      <a class="nav-item" href="#/coberturas"    data-view="coberturas"><span class="ico">🤝</span> Coberturas</a>
+      <a class="nav-item" href="#/parte"         data-view="parte"><span class="ico">📝</span> Parte diario</a>
+      <a class="nav-item" href="#/institucional" data-view="institucional"><span class="ico">🗂️</span> Horarios institucionales</a>
+      <a class="nav-item" href="#/configuracion" data-view="configuracion"><span class="ico">⚙️</span> Configuración</a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="conn" id="conn-state" title="Estado de la conexión con el backend">
+        <span class="dot"></span><span class="conn-label">…</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btn-sync" type="button">↻ Actualizar</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn only-mobile" id="btn-menu" type="button" aria-label="Menú">☰</button>
+      <div class="topbar-title">
+        <h1 id="view-title">Inicio</h1>
+        <p id="view-sub"></p>
+      </div>
+      <div class="topbar-actions" id="topbar-actions"></div>
+    </header>
+
+    <main class="view" id="view" tabindex="-1"></main>
+  </div>
+
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="modal-host" id="modal-host" hidden></div>
+
+<script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
