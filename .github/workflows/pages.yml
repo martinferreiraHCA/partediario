@@ -14,10 +14,13 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    # El entorno github-pages sólo admite despliegues desde la rama por defecto
+    # del repositorio: en las demás el trabajo se omite en lugar de fallar.
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     environment:
       name: github-pages
