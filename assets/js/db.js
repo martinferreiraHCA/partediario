@@ -4,7 +4,7 @@
  *   modo "google" → Apps Script + Google Sheets
  */
 
-import { apiGet, apiPost } from './api.js';
+import { apiPost } from './api.js';
 import { getSettings } from './settings.js';
 import { CONFIG_POR_DEFECTO, normalizarClase, normalizarInasistencia, normalizarFilaParte, parteVacio, anioActivo } from './modelo.js';
 import { datosDemo } from './demo.js';
@@ -104,7 +104,7 @@ export async function cargar({ silencioso = false } = {}) {
   estado.meta.error = '';
   if (modo === 'google') {
     try {
-      const resp = await apiGet('estado');
+      const resp = await apiPost('estado');
       aplicarPaquete(resp.datos || resp);
       notificar('carga');
       return estado;

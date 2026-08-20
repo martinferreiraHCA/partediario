@@ -63,7 +63,11 @@ las pantallas antes de conectar Google.
    Resumen: crear un proyecto de Apps Script, pegar `apps-script/Codigo.gs`, implementarlo como
    aplicación web y ejecutar la **configuración inicial** desde la pantalla *Configuración*.
 3. **Cargar el horario del año**: *Horarios institucionales → Subir horario* (XLSX, ODS o CSV).
-4. **Dar accesos**: *Configuración → Usuarios y accesos*. Cada persona entra con su código.
+4. **Habilitar el ingreso con Google**: creá un ID de cliente OAuth y cargalo en
+   *Configuración → Ingreso con cuenta de Google* (pasos en la misma guía).
+5. **Dar accesos**: *Configuración → Usuarios y accesos*. Cada persona entra con su cuenta de Google
+   —puede tener **varios correos asociados**, institucional y personal— o con un código, si no tiene
+   cuenta de Google.
 
 ## Roles
 
@@ -76,7 +80,13 @@ las pantallas antes de conectar Google.
 | Psicología / equipo | Consulta de avisos, horarios y parte |
 | Docente | Consulta de horarios |
 
-Los roles se definen en la hoja **Usuarios** de la planilla de configuración, dentro de la carpeta de Drive.
+Los roles se definen en la hoja **Usuarios** de la planilla de configuración, dentro de la carpeta de
+Drive. Cada fila admite un correo principal y una lista de correos adicionales, de modo que una misma
+persona entre con cualquiera de sus cuentas de Google y conserve su rol.
+
+El ingreso se resuelve así: el navegador obtiene un ID token de Google, el backend lo verifica contra
+`oauth2.googleapis.com/tokeninfo`, comprueba que el `aud` coincida con el ID de cliente configurado y
+busca el correo entre los usuarios autorizados.
 
 ## Estructura del repositorio
 
@@ -88,6 +98,7 @@ assets/js/
   db.js                    Estado y persistencia (demo local o Google)
   api.js                   Cliente del API de Apps Script
   sesion.js                Sesión, roles y permisos
+  google.js                Ingreso con cuenta de Google (Google Identity Services)
   logica.js                Cruce de inasistencias, parte diario y coberturas
   modelo.js                Modelo de datos y configuración por defecto
   importar.js              Lectura de planillas (CSV nativo, XLSX/ODS con SheetJS)

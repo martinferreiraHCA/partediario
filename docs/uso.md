@@ -68,10 +68,12 @@ se exporta el horario y se descargan plantillas de ejemplo.
 
 ## Configuración
 
-- **Conexión**: modo demostración o Google Drive, URL de Apps Script, código de acceso y frecuencia
-  de actualización automática.
+- **Conexión**: modo demostración o Google Drive, URL de Apps Script, quién está identificado y con
+  qué cuenta, y la frecuencia de actualización automática.
+- **Ingreso con cuenta de Google**: ID de cliente OAuth que habilita el botón *Acceder con Google*.
 - **Configuración inicial**: crea la estructura de carpetas y archivos en Drive.
-- **Usuarios y accesos**: alta, baja y rol de cada persona (sólo administradores).
+- **Usuarios y accesos**: alta, baja, rol y correos de cada persona (sólo administradores). Una misma
+  persona puede tener varios correos de Google asociados: entra con cualquiera de ellos.
 - **Datos de la institución**: liceo, motivos de inasistencia y enlace al formulario.
 - **Turnos y módulos**: los horarios de cada módulo, que se muestran en la grilla y en el parte.
 - **Datos y respaldos**: descargar o restaurar un respaldo completo en JSON.

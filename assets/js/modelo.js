@@ -13,6 +13,7 @@ import { uid, normalizarFecha, anioDe } from './utils.js';
 export const CONFIG_POR_DEFECTO = {
   liceo: 'Liceo N.º 5',
   liceos: ['Liceo N.º 5'],
+  clientId: '',
   anioActivo: new Date().getFullYear(),
   anios: [{ anio: new Date().getFullYear(), estado: 'activo', origen: '', actualizado: '' }],
   turnos: [

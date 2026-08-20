@@ -42,7 +42,7 @@ var HOJAS = {
 };
 
 var ENCABEZADOS = {
-  usuarios: ['id', 'nombre', 'email', 'rol', 'codigo', 'activo', 'observaciones'],
+  usuarios: ['id', 'nombre', 'email', 'rol', 'codigo', 'activo', 'observaciones', 'emailsAdicionales'],
   turnos: ['turno', 'nombre', 'modulo', 'inicio', 'fin'],
   anios: ['anio', 'estado', 'origen', 'actualizado', 'clases'],
   motivos: ['motivo'],
@@ -112,18 +112,35 @@ function manejar(params) {
       return responder({ ok: true, version: VERSION, instalado: estaInstalado() });
     }
 
-    var usuario = resolverUsuario(params.token);
+    if (accion === 'configPublica') {
+      // Lo mínimo que la pantalla de acceso necesita antes de identificarse.
+      var instalado = estaInstalado();
+      return responder({
+        ok: true,
+        instalado: instalado,
+        clientId: instalado ? String(leerGeneral().clientId || '') : '',
+        liceo: instalado ? String(leerGeneral().liceo || '') : '',
+        version: VERSION,
+      });
+    }
+
+    var identidad = identificar(params);
+    var usuario = identidad.usuario;
 
     if (accion === 'sesion') {
       return responder({
         ok: true,
         autenticado: !!usuario,
         instalado: estaInstalado(),
-        nombre: usuario ? usuario.nombre : '',
-        email: usuario ? usuario.email : '',
+        metodo: identidad.metodo,
+        motivo: identidad.motivo,
+        nombre: usuario ? usuario.nombre : (identidad.nombre || ''),
+        email: usuario ? usuario.email : (identidad.email || ''),
+        emails: usuario ? usuario.emails : (identidad.email ? [identidad.email] : []),
         rol: usuario ? usuario.rol : 'lectura',
         permisos: usuario ? (PERMISOS_POR_ROL[usuario.rol] || []) : [],
-        carpetaUrl: estaInstalado() ? carpetaRaiz().getUrl() : '',
+        carpetaUrl: estaInstalado() && usuario ? carpetaRaiz().getUrl() : '',
+        clientId: estaInstalado() ? String(leerGeneral().clientId || '') : '',
       });
     }
 
@@ -140,9 +157,27 @@ function manejar(params) {
       return responder({ ok: false, error: 'El sistema todavía no fue configurado. Ejecutá la configuración inicial.' });
     }
 
+    if (identidad.metodo === 'bootstrap' && PERMISO_POR_ACCION[accion]) {
+      return responder({ ok: false, codigo: 'sin_usuarios',
+        error: 'La hoja «Usuarios» está vacía: volvé a ejecutar la configuración inicial para crear el administrador.' });
+    }
+
     var permiso = PERMISO_POR_ACCION[accion];
     if (permiso && !tienePermiso(usuario, permiso)) {
-      return responder({ ok: false, error: 'No tenés permisos para realizar esta acción (' + accion + ').' });
+      if (identidad.motivo === 'sesion_vencida') {
+        return responder({ ok: false, codigo: 'sesion_vencida',
+          error: 'Tu sesión de Google venció. Volvé a ingresar.' });
+      }
+      if (identidad.motivo === 'sin_autorizacion') {
+        return responder({ ok: false, codigo: 'sin_autorizacion',
+          error: 'La cuenta ' + identidad.email + ' no figura entre los usuarios autorizados.' });
+      }
+      if (identidad.motivo === 'codigo_invalido' || identidad.motivo === 'sin_credenciales') {
+        return responder({ ok: false, codigo: 'sin_credenciales',
+          error: 'Necesitás identificarte para realizar esta acción.' });
+      }
+      return responder({ ok: false, codigo: 'sin_permisos',
+        error: 'No tenés permisos para realizar esta acción (' + accion + ').' });
     }
 
     switch (accion) {
@@ -268,14 +303,17 @@ function instalar(nombreLiceo, carpetaId) {
 
   // Primer usuario administrador.
   var codigoAdmin = '';
+  var emailAdmin = '';
   var usuarios = leerUsuarios();
   if (!usuarios.length) {
     var email = '';
     try { email = Session.getEffectiveUser().getEmail(); } catch (e) { email = ''; }
+    emailAdmin = email;
     codigoAdmin = generarCodigo();
     guardarUsuario({
       id: 'usr_admin', nombre: 'Administrador', email: email, rol: 'admin',
-      codigo: codigoAdmin, activo: true, observaciones: 'Creado por la configuración inicial',
+      codigo: codigoAdmin, activo: true, emailsAdicionales: '',
+      observaciones: 'Creado por la configuración inicial. Puede entrar con esta cuenta de Google o con el código.',
     });
   }
 
@@ -293,6 +331,7 @@ function instalar(nombreLiceo, carpetaId) {
     formUrl: form ? form.getPublishedUrl() : '',
     formEdicionUrl: form ? form.getEditUrl() : '',
     codigoAdmin: codigoAdmin,
+    emailAdmin: emailAdmin,
   };
 }
 
@@ -459,10 +498,20 @@ function eliminarFila(h, clave, valor) {
 
 function leerUsuarios() {
   return leerTabla(hoja(HOJAS.usuarios)).map(function (u) {
+    var principal = String(u.email || '').trim().toLowerCase();
+    var adicionales = String(u.emailsAdicionales || '').split(/[,;\s]+/)
+      .map(function (e) { return e.trim().toLowerCase(); })
+      .filter(function (e) { return !!e; });
+    var todos = [];
+    [principal].concat(adicionales).forEach(function (e) {
+      if (e && todos.indexOf(e) < 0) todos.push(e);
+    });
     return {
       id: String(u.id || ''),
       nombre: String(u.nombre || ''),
-      email: String(u.email || ''),
+      email: principal,
+      emails: todos,
+      emailsAdicionales: adicionales.join(', '),
       rol: String(u.rol || 'lectura'),
       codigo: String(u.codigo || ''),
       activo: !(String(u.activo).toLowerCase() === 'no' || u.activo === false),
@@ -471,16 +520,82 @@ function leerUsuarios() {
   });
 }
 
-function resolverUsuario(token) {
-  if (!estaInstalado()) return { id: 'bootstrap', nombre: 'Instalación', email: '', rol: 'admin', activo: true };
+/**
+ * Identifica a quien hace el pedido.
+ * Devuelve { usuario, metodo, email, motivo }: `usuario` es null cuando no se
+ * pudo identificar, y `motivo` explica por qué (para que la aplicación pueda
+ * mostrar un mensaje útil).
+ */
+function identificar(params) {
+  var bootstrap = { id: 'bootstrap', nombre: 'Instalación', email: '', rol: 'admin', activo: true, emails: [] };
+  if (!estaInstalado()) return { usuario: bootstrap, metodo: 'bootstrap', email: '', motivo: '' };
+
   var usuarios = leerUsuarios();
-  if (!usuarios.length) return { id: 'bootstrap', nombre: 'Instalación', email: '', rol: 'admin', activo: true };
-  var codigo = String(token || '').trim();
-  if (!codigo) return null;
-  for (var i = 0; i < usuarios.length; i++) {
-    if (usuarios[i].codigo && usuarios[i].codigo === codigo && usuarios[i].activo) return usuarios[i];
+  if (!usuarios.length) return { usuario: bootstrap, metodo: 'bootstrap', email: '', motivo: '' };
+
+  // 1. Ingreso con la cuenta de Google.
+  var idToken = String((params && params.idToken) || '').trim();
+  if (idToken) {
+    var identidad = verificarIdToken(idToken);
+    if (!identidad) return { usuario: null, metodo: 'google', email: '', motivo: 'sesion_vencida' };
+    for (var i = 0; i < usuarios.length; i++) {
+      if (!usuarios[i].activo) continue;
+      if (usuarios[i].emails.indexOf(identidad.email) >= 0) {
+        return { usuario: usuarios[i], metodo: 'google', email: identidad.email, motivo: '' };
+      }
+    }
+    return { usuario: null, metodo: 'google', email: identidad.email,
+      nombre: identidad.nombre, motivo: 'sin_autorizacion' };
   }
-  return null;
+
+  // 2. Código de acceso personal.
+  var codigo = String((params && params.token) || '').trim();
+  if (codigo) {
+    for (var j = 0; j < usuarios.length; j++) {
+      if (usuarios[j].codigo && usuarios[j].codigo === codigo && usuarios[j].activo) {
+        return { usuario: usuarios[j], metodo: 'codigo', email: usuarios[j].email, motivo: '' };
+      }
+    }
+    return { usuario: null, metodo: 'codigo', email: '', motivo: 'codigo_invalido' };
+  }
+
+  return { usuario: null, metodo: '', email: '', motivo: 'sin_credenciales' };
+}
+
+/**
+ * Verifica el ID token contra Google y devuelve { email, nombre }.
+ * Se cachea unos minutos para no consultar en cada pedido.
+ */
+function verificarIdToken(idToken) {
+  var cache = CacheService.getScriptCache();
+  var clave = 'idt_' + Utilities.base64EncodeWebSafe(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, idToken));
+  var guardado = cache.get(clave);
+  if (guardado) {
+    var previo = JSON.parse(guardado);
+    if (previo.exp * 1000 > Date.now()) return previo;
+  }
+  var resp;
+  try {
+    resp = UrlFetchApp.fetch(
+      'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
+      { muteHttpExceptions: true });
+  } catch (e) {
+    return null;
+  }
+  if (resp.getResponseCode() !== 200) return null;
+  var datos;
+  try { datos = JSON.parse(resp.getContentText()); } catch (e2) { return null; }
+
+  var clientId = String(leerGeneral().clientId || '').trim();
+  if (clientId && String(datos.aud) !== clientId) return null;
+  if (String(datos.email_verified) !== 'true') return null;
+  var exp = Number(datos.exp || 0);
+  if (!exp || exp * 1000 < Date.now()) return null;
+
+  var identidad = { email: String(datos.email || '').toLowerCase(), nombre: String(datos.name || ''), exp: exp };
+  cache.put(clave, JSON.stringify(identidad), 300);
+  return identidad;
 }
 
 function tienePermiso(usuario, permiso) {
@@ -491,14 +606,17 @@ function tienePermiso(usuario, permiso) {
 
 function guardarUsuario(usuario) {
   if (!usuario || !usuario.nombre) return { ok: false, error: 'Falta el nombre del usuario.' };
+  var adicionales = usuario.emailsAdicionales;
+  if (Object.prototype.toString.call(adicionales) === '[object Array]') adicionales = adicionales.join(', ');
   var item = {
     id: usuario.id || 'usr_' + Utilities.getUuid().slice(0, 8),
     nombre: usuario.nombre,
-    email: usuario.email || '',
+    email: String(usuario.email || '').trim().toLowerCase(),
     rol: usuario.rol || 'lectura',
     codigo: usuario.codigo || generarCodigo(),
     activo: usuario.activo === false ? false : true,
     observaciones: usuario.observaciones || '',
+    emailsAdicionales: String(adicionales || '').toLowerCase(),
   };
   upsertFila(hoja(HOJAS.usuarios), ENCABEZADOS.usuarios, 'id', item);
   return { ok: true, usuario: item };
@@ -613,6 +731,7 @@ function leerConfig() {
   return {
     liceo: String(general.liceo || 'Liceo'),
     liceos: liceos.length ? liceos : [String(general.liceo || 'Liceo')],
+    clientId: String(general.clientId || ''),
     anioActivo: Number(general.anioActivo) || new Date().getFullYear(),
     anios: leerAnios(),
     turnos: leerTurnos(),
@@ -622,11 +741,13 @@ function leerConfig() {
 
 function guardarConfig(config) {
   if (!config) return { ok: false, error: 'Falta la configuración.' };
-  escribirGeneral({
+  var general = {
     liceo: config.liceo || '',
     liceos: (config.liceos || []).join(', '),
     anioActivo: config.anioActivo || new Date().getFullYear(),
-  });
+  };
+  if (config.clientId !== undefined) general.clientId = String(config.clientId || '').trim();
+  escribirGeneral(general);
   if (config.turnos) escribirTurnos(config.turnos);
   if (config.anios) escribirAnios(config.anios);
   if (config.motivos) escribirMotivos(config.motivos);

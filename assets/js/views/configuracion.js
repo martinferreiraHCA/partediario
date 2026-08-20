@@ -3,8 +3,9 @@
 import { el, clear, descargar, fmtFechaHora, uid } from '../utils.js';
 import { tarjeta, modalFormulario, confirmar, avisoOk, avisoError, avisoAtencion, vacio } from '../ui.js';
 import { getSettings, setSettings } from '../settings.js';
-import { sesion, resolverSesion, iniciarSesion, cerrarSesion, puede, ETIQUETA_ROL, PERMISOS_POR_ROL } from '../sesion.js';
-import { apiGet, apiPost, pingApi } from '../api.js';
+import { sesion, resolverSesion, iniciarSesionGoogle, iniciarSesionConCodigo, cerrarSesion, obtenerClientId, puede, ETIQUETA_ROL, PERMISOS_POR_ROL } from '../sesion.js';
+import { prepararIngresoGoogle } from '../google.js';
+import { apiPost, pingApi } from '../api.js';
 import { estado, cargar, guardarConfig, reiniciarDemo } from '../db.js';
 
 export async function render(host, ctx) {
@@ -20,6 +21,7 @@ export async function render(host, ctx) {
   const secciones = [
     seccionConexion(ctx, ajustes),
     seccionInstalacion(ctx, ajustes),
+    sesion.modo === 'google' ? seccionIngresoGoogle(ctx) : null,
     puede('administrar') && sesion.modo === 'google' ? await seccionUsuarios(ctx) : null,
     seccionInstitucion(ctx),
     seccionTurnos(ctx),
@@ -36,31 +38,78 @@ function seccionConexion(ctx, ajustes) {
     el('option', { value: 'google', selected: ajustes.modo === 'google' }, 'Google Drive (Apps Script)'),
   ]);
   const url = el('input', { type: 'url', value: ajustes.apiUrl, placeholder: 'https://script.google.com/macros/s/AKfy…/exec' });
-  const codigo = el('input', { type: 'text', value: ajustes.apiToken, placeholder: 'Código de acceso personal' });
   const refresco = el('input', { type: 'number', min: 0, max: 3600, value: ajustes.autoRefresh });
+  const codigo = el('input', { type: 'text', value: ajustes.apiToken, placeholder: 'Sólo si entrás con código' });
 
-  const estadoSesion = el('div', { class: 'row' });
-  const pintarSesion = () => {
-    clear(estadoSesion);
+  const identidad = el('div', { class: 'stack' });
+  const zonaGoogle = el('div', { style: 'min-height:44px' });
+
+  const pintarIdentidad = () => {
+    clear(identidad);
     if (getSettings().modo !== 'google') {
-      estadoSesion.append(el('span', { class: 'chip warn' }, 'Modo demostración'));
+      identidad.append(el('span', { class: 'chip warn' }, 'Modo demostración: los datos quedan en este navegador'));
       return;
     }
     if (sesion.autenticado) {
-      estadoSesion.append(
-        el('span', { class: 'chip ok' }, sesion.nombre || sesion.email || 'Identificado'),
+      identidad.append(el('div', { class: 'row' }, [
+        sesion.foto ? el('img', { src: sesion.foto, alt: '', width: 32, height: 32, style: 'border-radius:50%' }) : null,
+        el('strong', {}, sesion.nombre || sesion.email || 'Identificado'),
         el('span', { class: 'chip pri' }, ETIQUETA_ROL[sesion.rol] || sesion.rol),
+        sesion.metodo === 'google' ? el('span', { class: 'chip ok' }, 'Cuenta de Google') : el('span', { class: 'chip' }, 'Código de acceso'),
         sesion.carpetaUrl ? el('a', { class: 'btn btn-sm', href: sesion.carpetaUrl, target: '_blank', rel: 'noopener' }, '📁 Abrir carpeta en Drive') : null,
         el('button', {
           class: 'btn btn-sm', type: 'button',
-          onclick: () => { cerrarSesion(); codigo.value = ''; pintarSesion(); },
+          onclick: async () => {
+            await cerrarSesion();
+            codigo.value = '';
+            pintarIdentidad();
+            ctx.refrescar();
+          },
         }, 'Cerrar sesión'),
-      );
+      ]));
+      if (sesion.emails && sesion.emails.length) {
+        identidad.append(el('p', { class: 'hint' }, `Correos asociados: ${sesion.emails.join(' · ')}`));
+      }
+    } else if (sesion.motivo === 'sin_autorizacion') {
+      identidad.append(el('span', { class: 'chip warn' },
+        `La cuenta ${sesion.email || ''} no está autorizada: pedí que agreguen ese correo a tu usuario.`));
     } else {
-      estadoSesion.append(el('span', { class: 'chip warn' }, 'Sin identificar: ingresá tu código de acceso'));
+      identidad.append(el('span', { class: 'chip warn' }, 'Sin identificar'));
     }
   };
-  pintarSesion();
+
+  const prepararGoogle = async () => {
+    clear(zonaGoogle);
+    if (getSettings().modo !== 'google' || sesion.autenticado) return;
+    const clientId = await obtenerClientId();
+    if (!clientId) {
+      zonaGoogle.append(el('span', { class: 'hint' },
+        'Para habilitar el ingreso con Google falta cargar el ID de cliente OAuth (más abajo).'));
+      return;
+    }
+    try {
+      await prepararIngresoGoogle({
+        clientId,
+        contenedor: zonaGoogle,
+        alRecibirCredencial: async (credencial) => {
+          try {
+            await iniciarSesionGoogle(credencial);
+            if (!sesion.autenticado) { pintarIdentidad(); avisoError('La cuenta de Google no está autorizada.'); return; }
+            await cargar();
+            avisoOk(`Bienvenido/a ${sesion.nombre || ''}`.trim());
+            ctx.refrescar();
+          } catch (e) {
+            avisoError(e.message || 'No se pudo ingresar con Google.');
+          }
+        },
+      });
+    } catch (e) {
+      zonaGoogle.append(el('span', { class: 'chip warn' }, e.message || 'No se pudo preparar el ingreso con Google.'));
+    }
+  };
+
+  pintarIdentidad();
+  prepararGoogle();
 
   const guardar = async () => {
     setSettings({
@@ -76,7 +125,7 @@ function seccionConexion(ctx, ajustes) {
     } catch (e) {
       avisoError(e.message || 'No se pudo conectar.');
     }
-    pintarSesion();
+    pintarIdentidad();
     ctx.refrescar();
   };
 
@@ -91,18 +140,19 @@ function seccionConexion(ctx, ajustes) {
         el('span', { class: 'hint' }, 'Se obtiene al implementar el proyecto de Apps Script como aplicación web.'),
       ]),
       el('label', { class: 'field' }, [
-        el('span', {}, 'Código de acceso'), codigo,
-        el('span', { class: 'hint' }, 'Figura en la hoja «Usuarios» del archivo de configuración, dentro de la carpeta de Drive.'),
+        el('span', {}, 'Código de acceso (alternativa a Google)'), codigo,
+        el('span', { class: 'hint' }, 'Sólo para quien no tenga cuenta de Google o para equipos compartidos.'),
       ]),
     ]),
-    estadoSesion,
+    identidad,
+    zonaGoogle,
     el('div', { class: 'row' }, [
       el('button', { class: 'btn btn-primary', type: 'button', onclick: guardar }, '💾 Guardar y conectar'),
       el('button', {
         class: 'btn', type: 'button',
         onclick: async (ev) => {
           ev.target.disabled = true;
-          setSettings({ apiUrl: url.value.trim(), apiToken: codigo.value.trim() });
+          setSettings({ apiUrl: url.value.trim() });
           try {
             const resp = await pingApi();
             avisoOk(`Conexión correcta · ${resp.version || 'backend activo'}${resp.instalado === false ? ' · falta la configuración inicial' : ''}`);
@@ -116,10 +166,10 @@ function seccionConexion(ctx, ajustes) {
       el('button', {
         class: 'btn', type: 'button',
         onclick: async () => {
-          if (!codigo.value.trim()) { avisoAtencion('Ingresá tu código de acceso.'); return; }
+          if (!codigo.value.trim()) { avisoAtencion('Ingresá tu código de acceso o usá el botón de Google.'); return; }
           setSettings({ modo: 'google', apiUrl: url.value.trim() });
           try {
-            await iniciarSesion(codigo.value.trim());
+            await iniciarSesionConCodigo(codigo.value.trim());
             await cargar();
             avisoOk(`Bienvenido/a ${sesion.nombre || ''}`.trim());
             ctx.refrescar();
@@ -127,7 +177,47 @@ function seccionConexion(ctx, ajustes) {
             avisoError(e.message || 'No se pudo iniciar sesión.');
           }
         },
-      }, '🔑 Identificarme'),
+      }, '🔑 Entrar con código'),
+    ]),
+  ]));
+}
+
+/* ---------------- ingreso con Google ---------------- */
+
+function seccionIngresoGoogle(ctx) {
+  const clientId = el('input', {
+    type: 'text', value: estado.config.clientId || getSettings().clientId || '',
+    placeholder: '1234567890-abcdefg.apps.googleusercontent.com',
+  });
+  const origen = location.origin;
+
+  return tarjeta('Ingreso con cuenta de Google', el('div', { class: 'card-pad stack' }, [
+    el('p', { class: 'small muted' },
+      'Con el ID de cliente OAuth cargado, cada persona entra con su cuenta de Google en lugar de un código. El sistema busca el correo entre los usuarios autorizados; una misma persona puede tener varios correos asociados.'),
+    el('ol', { class: 'small muted', style: 'margin:0;padding-left:18px' }, [
+      el('li', {}, 'En console.cloud.google.com → APIs y servicios → Credenciales, creá un ID de cliente OAuth de tipo «Aplicación web».'),
+      el('li', {}, el('span', { html: `En <b>Orígenes autorizados de JavaScript</b> agregá exactamente: <code>${origen}</code>` })),
+      el('li', {}, 'Copiá el ID de cliente acá abajo y guardá. No hace falta cargar el secreto.'),
+    ]),
+    el('label', { class: 'field' }, [
+      el('span', {}, 'ID de cliente OAuth (Client ID)'), clientId,
+      el('span', { class: 'hint' }, 'Queda guardado en la hoja «General» del archivo de configuración, dentro de la carpeta de Drive.'),
+    ]),
+    el('div', { class: 'row' }, [
+      el('button', {
+        class: 'btn btn-primary', type: 'button', disabled: !puede('administrar'),
+        onclick: async () => {
+          try {
+            await guardarConfig({ clientId: clientId.value.trim() });
+            setSettings({ clientId: clientId.value.trim() });
+            avisoOk('Ingreso con Google configurado.');
+            ctx.refrescar();
+          } catch (e) { avisoError(e.message); }
+        },
+      }, '💾 Guardar'),
+      estado.config.clientId
+        ? el('span', { class: 'chip ok' }, 'Ingreso con Google habilitado')
+        : el('span', { class: 'chip warn' }, 'Todavía sólo se puede entrar con código'),
     ]),
   ]));
 }
@@ -155,8 +245,10 @@ function seccionInstalacion(ctx, ajustes) {
           enlace('⚙️ Archivo de configuración (usuarios, turnos, años)', resp.configUrl),
           enlace('📋 Formulario de aviso de inasistencia', resp.formUrl),
           enlace('📊 Planilla de respuestas', resp.respuestasUrl),
+          resp.emailAdmin ? el('p', { class: 'chip ok', style: 'display:inline-block' },
+            `Administrador: ${resp.emailAdmin} — vas a poder entrar con esa cuenta de Google`) : null,
           resp.codigoAdmin ? el('p', { class: 'chip warn', style: 'display:inline-block' },
-            `Tu código de administrador: ${resp.codigoAdmin} (guardalo, también figura en la hoja Usuarios)`) : null,
+            `Código de acceso de respaldo: ${resp.codigoAdmin} (guardalo; también figura en la hoja Usuarios)`) : null,
         ]),
       );
       if (resp.formUrl) setSettings({ formUrl: resp.formUrl });
@@ -216,7 +308,7 @@ async function seccionUsuarios(ctx) {
   let usuarios = [];
   let error = '';
   try {
-    const resp = await apiGet('usuarios');
+    const resp = await apiPost('usuarios');
     usuarios = resp.usuarios || [];
   } catch (e) {
     error = e.message || 'No se pudieron leer los usuarios.';
@@ -229,10 +321,11 @@ async function seccionUsuarios(ctx) {
     if (error) { cuerpo.append(el('p', { class: 'chip warn', style: 'display:inline-block;padding:10px' }, error)); return; }
     if (!lista.length) { cuerpo.append(vacio('Todavía no hay usuarios cargados.', '👤')); return; }
     cuerpo.append(el('div', { class: 'table-wrap' }, el('table', { class: 'tbl' }, [
-      el('thead', {}, el('tr', {}, ['Nombre', 'Correo', 'Rol', 'Código de acceso', 'Activo', ''].map(t => el('th', {}, t)))),
+      el('thead', {}, el('tr', {}, ['Nombre', 'Correos de Google', 'Rol', 'Código de acceso', 'Activo', ''].map(t => el('th', {}, t)))),
       el('tbody', {}, lista.map(u => el('tr', {}, [
         el('td', {}, u.nombre || '—'),
-        el('td', { class: 'small muted' }, u.email || '—'),
+        el('td', { class: 'small muted' },
+          (u.emails && u.emails.length ? u.emails : [u.email].filter(Boolean)).join(' · ') || '—'),
         el('td', {}, el('span', { class: 'chip pri' }, ETIQUETA_ROL[u.rol] || u.rol)),
         el('td', { class: 'mono small' }, u.codigo || '—'),
         el('td', {}, u.activo === false ? el('span', { class: 'chip warn' }, 'no') : el('span', { class: 'chip ok' }, 'sí')),
@@ -263,7 +356,7 @@ async function seccionUsuarios(ctx) {
   return tarjeta('Usuarios y accesos',
     el('div', { class: 'card-pad stack' }, [
       el('p', { class: 'small muted' },
-        'Las cuentas se administran en la hoja «Usuarios» del archivo de configuración de Drive; desde acá se edita lo mismo. Cada persona entra con su código de acceso.'),
+        'Las cuentas se administran en la hoja «Usuarios» del archivo de configuración de Drive; desde acá se edita lo mismo. Cada persona entra con su cuenta de Google (puede tener varios correos asociados) o, si no tiene, con un código de acceso.'),
       cuerpo,
       el('div', { class: 'row' }, [
         el('button', { class: 'btn btn-primary', type: 'button', onclick: () => dialogoUsuario(ctx, null) }, '＋ Agregar usuario'),
@@ -288,15 +381,27 @@ async function dialogoUsuario(ctx, usuario) {
     textoOk: usuario ? 'Guardar' : 'Agregar',
     campos: [
       { name: 'nombre', label: 'Nombre y apellido', requerido: true, ancho: 'full' },
-      { name: 'email', label: 'Correo de Google (opcional)', tipo: 'text' },
+      {
+        name: 'email', label: 'Correo principal de Google', tipo: 'text',
+        hint: 'Con este correo entra a la aplicación.',
+      },
+      {
+        name: 'emailsAdicionales', label: 'Otros correos de la misma persona', tipo: 'text', ancho: 'full',
+        hint: 'Separados por coma. Sirve cuando alguien usa la cuenta institucional y la personal.',
+      },
       {
         name: 'rol', label: 'Rol', tipo: 'select',
         opciones: Object.keys(PERMISOS_POR_ROL).map(r => ({ valor: r, texto: ETIQUETA_ROL[r] || r })),
       },
-      { name: 'codigo', label: 'Código de acceso', hint: 'Si se deja vacío, se genera uno automáticamente.' },
+      {
+        name: 'codigo', label: 'Código de acceso (alternativa a Google)',
+        hint: 'Sirve para quien no tenga cuenta de Google. Si se deja vacío se genera uno.',
+      },
       { name: 'activo', label: 'Acceso habilitado', tipo: 'checkbox', valor: true },
     ],
-    valores: usuario || { rol: 'adscripcion', activo: true },
+    valores: usuario
+      ? { ...usuario, emailsAdicionales: (usuario.emailsAdicionales || (usuario.emails || []).slice(1).join(', ')) }
+      : { rol: 'adscripcion', activo: true },
   });
   if (!datos) return;
   try {

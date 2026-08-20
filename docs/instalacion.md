@@ -36,8 +36,9 @@ Abriéndola ya podés recorrer todo en **modo demostración**, sin tocar Google.
 2. Tipo: **Aplicación web**.
 3. *Ejecutar como*: **Yo** (tu cuenta será la dueña de la carpeta y de los archivos).
 4. *Quién tiene acceso*: **Cualquier usuario**.
-   Esto es necesario porque la aplicación de GitHub Pages hace pedidos anónimos; el control de
-   acceso real lo hace el sistema con los **códigos de acceso** de la hoja «Usuarios».
+   Esto es necesario porque una página estática no puede autenticarse con la sesión de Google del
+   navegador contra Apps Script. El control de acceso real lo hace el sistema: verifica la
+   **cuenta de Google** de quien entra (ver paso 3) o, como alternativa, su **código de acceso**.
 5. Copiá la **URL de la aplicación web** (termina en `/exec`).
 6. La primera vez Google va a pedir autorización: aceptá los permisos de Drive, Hojas de cálculo,
    Formularios y disparadores.
@@ -76,7 +77,32 @@ También podés ejecutar la función `configuracionInicial()` directamente desde
 
 ---
 
-## 3. Cargar usuarios y accesos
+## 3. Habilitar el ingreso con cuenta de Google
+
+Con esto cada persona entra con su cuenta de Google en lugar de un código. El navegador obtiene un
+**ID token** firmado por Google y el backend lo verifica y busca el correo en la hoja «Usuarios».
+
+1. Entrá a [console.cloud.google.com](https://console.cloud.google.com) con la misma cuenta.
+2. Elegí (o creá) un proyecto y andá a **APIs y servicios → Pantalla de consentimiento de OAuth**.
+   - Tipo **Interno** si el liceo usa Google Workspace y sólo van a entrar cuentas del dominio.
+   - Tipo **Externo** si va a entrar alguna cuenta de otro dominio (por ejemplo un Gmail personal);
+     en ese caso agregá esas cuentas como *usuarios de prueba* o publicá la aplicación.
+3. **APIs y servicios → Credenciales → Crear credenciales → ID de cliente de OAuth**.
+   - Tipo de aplicación: **Aplicación web**.
+   - En **Orígenes autorizados de JavaScript** agregá exactamente el origen de tu GitHub Pages,
+     por ejemplo `https://<usuario>.github.io` (sin la barra final ni la ruta del repositorio).
+   - No hace falta configurar URI de redireccionamiento ni usar el secreto de cliente.
+4. Copiá el **ID de cliente** (`…apps.googleusercontent.com`).
+5. En la aplicación: **Configuración → Ingreso con cuenta de Google**, pegalo y **Guardar**.
+   Queda registrado en la hoja «General» del archivo de configuración, dentro de la carpeta de Drive.
+
+Desde ese momento la pantalla de acceso muestra el botón **Acceder con Google**. La sesión de Google
+dura alrededor de una hora; cuando vence, la aplicación lo avisa y pide volver a entrar.
+
+> El ingreso con código sigue disponible como alternativa (equipos compartidos de Adscripción,
+> personas sin cuenta de Google) y como salida de emergencia si algo falla con OAuth.
+
+## 4. Cargar usuarios y accesos
 
 En **Configuración → Usuarios y accesos** (o directamente en la hoja «Usuarios» de la planilla de
 configuración) agregá a cada persona con:
@@ -85,19 +111,29 @@ configuración) agregá a cada persona con:
 | --- | --- |
 | `id` | Identificador interno (se genera solo) |
 | `nombre` | Nombre y apellido |
-| `email` | Correo de Google (opcional, informativo) |
+| `email` | Correo principal de Google con el que entra |
 | `rol` | `admin`, `direccion`, `adscripcion`, `administrativo`, `psicologia`, `docente` o `lectura` |
-| `codigo` | Código de acceso personal (se genera solo si se deja vacío) |
+| `codigo` | Código de acceso personal, alternativa a Google (se genera solo si se deja vacío) |
 | `activo` | `sí` / `no` — permite dar de baja un acceso sin borrar la fila |
+| `observaciones` | Texto libre |
+| `emailsAdicionales` | **Otros correos de la misma persona**, separados por coma |
 
-Cada persona abre la aplicación, ingresa la URL `/exec` y su código, y entra con los permisos de su rol.
+**Varios correos por persona.** Es habitual que alguien tenga la cuenta institucional y además una
+personal, o que cambie de dominio. Poné el habitual en `email` y los demás en `emailsAdicionales`
+(por ejemplo `maria.perez@gmail.com, mperez@liceo5.edu.uy`): con cualquiera de ellos entra al mismo
+usuario, con el mismo rol y el mismo historial. Los correos no distinguen mayúsculas.
 
-> **Cuidado**: el código de acceso es la llave del sistema. Compartilo por un canal privado y
-> cambialo (o desactivá la fila) cuando alguien deja el cargo.
+Cada persona abre la aplicación, ingresa la URL `/exec` y toca **Acceder con Google** (o usa su
+código), y entra con los permisos de su rol. Si su cuenta no figura en la hoja, la aplicación se lo
+dice con claridad y le indica que pida que agreguen ese correo.
+
+> **Cuidado**: el código de acceso es una llave del sistema. Compartilo por un canal privado y
+> cambialo (o desactivá la fila) cuando alguien deja el cargo. Si preferís que sólo se pueda entrar
+> con cuenta de Google, dejá la columna `codigo` vacía.
 
 ---
 
-## 4. Cargar el horario institucional
+## 5. Cargar el horario institucional
 
 1. **Horarios institucionales → Subir horario** en el año que corresponda.
 2. Formatos: **XLSX**, **ODS** o **CSV**, en cualquiera de estas dos disposiciones:
@@ -113,7 +149,7 @@ Exportá el horario a planilla antes de subirlo.
 
 ---
 
-## 5. Formulario para docentes
+## 6. Formulario para docentes
 
 La configuración inicial crea el formulario **«Aviso de inasistencia docente»** dentro de
 `03 · Inasistencias`, ya vinculado a la planilla de respuestas y con un disparador que copia cada
@@ -128,7 +164,7 @@ respuesta a la hoja «Inasistencias».
 
 ---
 
-## 6. Mantenimiento
+## 7. Mantenimiento
 
 - **Actualizar el backend**: pegá la nueva versión de `Codigo.gs` y creá una implementación nueva
   (o actualizá la existente). La URL `/exec` se mantiene si actualizás la misma implementación.

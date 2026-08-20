@@ -1,16 +1,22 @@
 /*
  * Sesión y permisos.
  *
- * Las cuentas NO viven en la aplicación: están definidas en la hoja "Usuarios"
- * del archivo de configuración que vive dentro de la carpeta de Google Drive
- * del liceo. Cada persona tiene un código de acceso; la aplicación lo envía en
- * cada pedido y el backend responde quién es y qué puede hacer.
+ * Las cuentas NO viven en la aplicación: están definidas en la hoja «Usuarios»
+ * del archivo de configuración, dentro de la carpeta de Google Drive del liceo.
+ * Cada persona puede tener varios correos asociados (institucional, personal…).
+ *
+ * Formas de entrar:
+ *   1. Con la cuenta de Google (recomendada): el navegador obtiene un ID token
+ *      firmado por Google y el backend lo verifica y busca el correo.
+ *   2. Con un código de acceso personal, para quien no tenga cuenta de Google
+ *      o para equipos compartidos.
  *
  * En modo demostración (sin backend) se trabaja con un rol elegido localmente.
  */
 
-import { apiGet } from './api.js';
+import { apiPost, configPublica } from './api.js';
 import { getSettings, setSettings } from './settings.js';
+import { tokenVigente, datosDelToken, olvidarCuenta, pedirCredencial } from './google.js';
 
 export const PERMISOS_POR_ROL = {
   admin: ['verInasistencias', 'editarInasistencias', 'verHorarios', 'editarHorarios',
@@ -38,22 +44,33 @@ export const ETIQUETA_ROL = {
 export const sesion = {
   autenticado: false,
   modo: 'demo',
+  metodo: '',          // 'google' | 'codigo' | ''
   email: '',
+  emails: [],
   nombre: 'Modo demostración',
+  foto: '',
   rol: 'admin',
   permisos: PERMISOS_POR_ROL.admin.slice(),
   instalado: true,
   carpetaUrl: '',
+  clientId: '',
+  motivo: '',          // 'sin_autorizacion' | 'sesion_vencida' | 'sin_credenciales'
 };
 
 function aplicar(datos) {
   sesion.autenticado = !!datos.autenticado;
+  sesion.modo = datos.modo || sesion.modo;
+  sesion.metodo = datos.metodo || '';
   sesion.email = datos.email || '';
+  sesion.emails = datos.emails || (datos.email ? [datos.email] : []);
   sesion.nombre = datos.nombre || datos.email || '';
+  sesion.foto = datos.foto || '';
   sesion.rol = datos.rol || 'lectura';
   sesion.permisos = datos.permisos || PERMISOS_POR_ROL[sesion.rol] || [];
   sesion.instalado = datos.instalado !== false;
   sesion.carpetaUrl = datos.carpetaUrl || '';
+  sesion.motivo = datos.motivo || '';
+  if (datos.clientId !== undefined) sesion.clientId = datos.clientId || '';
   document.dispatchEvent(new CustomEvent('sesion:cambio', { detail: sesion }));
   return sesion;
 }
@@ -61,33 +78,80 @@ function aplicar(datos) {
 export function modoDemo() {
   const rol = getSettings().rol || 'admin';
   return aplicar({
-    autenticado: true, modo: 'demo', email: '', nombre: 'Modo demostración',
-    rol, permisos: PERMISOS_POR_ROL[rol] || PERMISOS_POR_ROL.admin, instalado: true,
+    autenticado: true, modo: 'demo', metodo: '', email: '', nombre: 'Modo demostración',
+    rol, permisos: PERMISOS_POR_ROL[rol] || PERMISOS_POR_ROL.admin, instalado: true, motivo: '',
   });
 }
 
-/** Consulta al backend quién es el portador del código de acceso guardado. */
+/** Client ID de Google publicado por el backend (necesario para dibujar el botón). */
+export async function obtenerClientId() {
+  const guardado = getSettings().clientId;
+  try {
+    const resp = await configPublica();
+    const clientId = resp.clientId || '';
+    if (clientId !== guardado) setSettings({ clientId });
+    sesion.clientId = clientId;
+    sesion.instalado = resp.instalado !== false;
+    return clientId;
+  } catch {
+    sesion.clientId = guardado;
+    return guardado;
+  }
+}
+
+/** Consulta al backend quién es la persona identificada con las credenciales guardadas. */
 export async function resolverSesion() {
-  const { modo } = getSettings();
+  const { modo, idToken, apiToken } = getSettings();
   sesion.modo = modo;
   if (modo !== 'google') return modoDemo();
-  const resp = await apiGet('sesion');
+
+  if (idToken && !tokenVigente(idToken)) {
+    setSettings({ idToken: '' });
+    return aplicar({ autenticado: false, modo: 'google', rol: 'lectura', permisos: [], motivo: 'sesion_vencida' });
+  }
+  if (!idToken && !apiToken) {
+    return aplicar({ autenticado: false, modo: 'google', rol: 'lectura', permisos: [], motivo: 'sin_credenciales' });
+  }
+
+  const resp = await apiPost('sesion');
   return aplicar({ ...resp, modo: 'google' });
 }
 
-export async function iniciarSesion(codigo) {
-  setSettings({ apiToken: String(codigo || '').trim() });
+/** Entra con el ID token que devolvió Google. */
+export async function iniciarSesionGoogle(credencial) {
+  if (!credencial) throw new Error('Google no devolvió una credencial.');
+  const datos = datosDelToken(credencial);
+  setSettings({ idToken: credencial, emailSesion: datos.email });
+  const estado = await resolverSesion();
+  if (!estado.autenticado) {
+    // El token es válido pero el correo no figura entre los usuarios autorizados.
+    sesion.email = sesion.email || datos.email;
+    sesion.nombre = sesion.nombre || datos.nombre;
+  }
+  sesion.foto = sesion.foto || datos.foto;
+  return estado;
+}
+
+export async function iniciarSesionConCodigo(codigo) {
+  setSettings({ apiToken: String(codigo || '').trim(), idToken: '' });
   return resolverSesion();
 }
 
-export function cerrarSesion() {
-  setSettings({ apiToken: '' });
-  return aplicar({ autenticado: false, rol: 'lectura', permisos: [], nombre: '', email: '' });
+export async function renovarSesionGoogle() {
+  await pedirCredencial();
+}
+
+export async function cerrarSesion() {
+  await olvidarCuenta();
+  setSettings({ apiToken: '', idToken: '', emailSesion: '' });
+  return aplicar({
+    autenticado: false, modo: getSettings().modo, rol: 'lectura', permisos: [],
+    nombre: '', email: '', foto: '', motivo: 'sin_credenciales',
+  });
 }
 
 export function puede(permiso) {
   return sesion.permisos.includes(permiso);
 }
 
-export function puedeEditarInasistencias() { return puede('editarInasistencias'); }
 export function esAdministrador() { return puede('administrar'); }

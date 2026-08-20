@@ -124,9 +124,15 @@ function necesitaAcceso() {
 }
 
 function marcarNav(vista) {
+  const sinAcceso = necesitaAcceso() || (getSettings().modo === 'google' && !sesion.autenticado);
   for (const a of $$('#nav .nav-item')) {
     a.classList.toggle('active', a.dataset.view === vista);
     const permiso = PERMISO_VISTA[a.dataset.view];
+    if (sinAcceso) {
+      // Sin identificarse sólo se ofrece Configuración (conexión e instalación).
+      a.hidden = a.dataset.view !== 'configuracion';
+      continue;
+    }
     a.hidden = !!(permiso && sesion.autenticado && !puede(permiso));
   }
 }
@@ -200,6 +206,13 @@ async function iniciar() {
   suscribir(() => actualizarChrome());
   document.addEventListener('settings:cambio', actualizarChrome);
   document.addEventListener('sesion:cambio', () => { actualizarChrome(); marcarNav(rutaActual.vista); });
+  document.addEventListener('sesion:expirada', async (ev) => {
+    if (ev.detail && ev.detail.codigo === 'sesion_vencida') {
+      avisoError('Tu sesión de Google venció. Volvé a ingresar.');
+    }
+    try { await resolverSesion(); } catch { /* la pantalla de acceso se encarga */ }
+    dibujar();
+  });
 
   rutaActual = leerRuta();
   if (!location.hash) location.hash = '#/inicio';
