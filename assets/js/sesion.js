@@ -16,7 +16,7 @@
 
 import { apiPost, configPublica } from './api.js';
 import { getSettings, setSettings, recordarInstitucion } from './settings.js';
-import { tokenVigente, datosDelToken, olvidarCuenta, pedirCredencial } from './google.js';
+import { tokenVigente, segundosRestantes, datosDelToken, olvidarCuenta, renovarCredencialSilenciosa } from './google.js';
 
 export const PERMISOS_POR_ROL = {
   admin: ['verInasistencias', 'editarInasistencias', 'verHorarios', 'editarHorarios',
@@ -136,8 +136,37 @@ export async function iniciarSesionGoogle(credencial) {
   return estado;
 }
 
-export async function renovarSesionGoogle() {
-  await pedirCredencial();
+let renovando = null;
+
+/**
+ * Renueva la sesión sin intervención de la persona. Devuelve true si quedó
+ * renovada. Nunca lanza: si no se puede, simplemente devuelve false.
+ */
+export async function renovarSesionSilenciosa() {
+  if (getSettings().modo !== 'google') return false;
+  if (renovando) return renovando;
+  renovando = (async () => {
+    try {
+      const clientId = sesion.clientId || getSettings().clientId;
+      if (!clientId) return false;
+      const credencial = await renovarCredencialSilenciosa({ clientId });
+      setSettings({ idToken: credencial });
+      await resolverSesion();
+      return sesion.autenticado;
+    } catch {
+      return false;
+    } finally {
+      renovando = null;
+    }
+  })();
+  return renovando;
+}
+
+/** true si el token vence dentro de `margen` segundos. */
+export function sesionPorVencer(margen = 300) {
+  const { idToken } = getSettings();
+  if (!idToken) return false;
+  return segundosRestantes(idToken) < margen;
 }
 
 export async function cerrarSesion() {

@@ -3,7 +3,7 @@
 import {
   el, clear, hoyISO, fmtFechaLarga, fmtFechaCorta, DIAS, diaSemana, ordinalHora, sumarDias,
 } from '../utils.js';
-import { vacio, tarjeta, modalFormulario, confirmar, avisoOk, avisoError, aviso } from '../ui.js';
+import { vacio, tarjeta, modalFormulario, confirmar, avisoOk, avisoError } from '../ui.js';
 import { sincronizarParte, ordenFilas, listaDocentes, listaGrupos, listaMaterias } from '../logica.js';
 import { anioActivo, horarioDeModulo } from '../modelo.js';
 import { guardarParte } from '../db.js';
@@ -22,32 +22,50 @@ export async function render(host, ctx) {
   const guardado = estado.partes[fecha];
   const { parte, cambios } = sincronizarParte(estado, fecha, guardado);
   const borrador = { ...parte, filas: parte.filas.map(f => ({ ...f })) };
-  let sucio = cambios > 0 && !!editable;
+  // 'ok' | 'pendiente' | 'guardando' | 'error'
+  let estadoGuardado = 'ok';
+  let reloj = null;
 
   ctx.setTitulo('Parte diario', `${DIAS[diaSemana(fecha)]} ${fmtFechaLarga(fecha)} · ${estado.config.liceo || ''}`);
 
   const contenedor = el('div', { class: 'stack' });
   host.append(contenedor);
 
-  const marcarSucio = () => { sucio = true; pintar(); };
+  // El parte se guarda solo: cada cambio programa un guardado y la barra
+  // muestra el estado. Nadie tiene que acordarse de apretar nada.
+  const marcarSucio = () => {
+    estadoGuardado = 'pendiente';
+    clearTimeout(reloj);
+    reloj = setTimeout(guardar, 1200);
+    pintar();
+  };
 
-  async function guardar({ silencioso = false } = {}) {
+  async function guardar() {
+    clearTimeout(reloj);
+    estadoGuardado = 'guardando';
+    acciones();
     try {
       await guardarParte(fecha, borrador);
-      sucio = false;
-      if (!silencioso) avisoOk('Parte guardado.');
+      estadoGuardado = 'ok';
       pintar();
     } catch (e) {
-      avisoError(e.message || 'No se pudo guardar el parte.');
+      estadoGuardado = 'error';
+      avisoError(e.message || 'No se pudo guardar el parte. Se reintenta con el próximo cambio.');
+      pintar();
     }
   }
 
   function acciones() {
+    const etiquetas = {
+      ok: '✓ Guardado', pendiente: '💾 Guardando…', guardando: '💾 Guardando…', error: '↻ Reintentar guardado',
+    };
     ctx.setAcciones([
       editable ? el('button', {
-        class: `btn ${sucio ? 'btn-primary' : ''}`, type: 'button', disabled: !sucio,
+        class: `btn ${estadoGuardado === 'error' ? 'btn-primary' : ''}`, type: 'button',
+        disabled: estadoGuardado !== 'error',
+        title: 'El parte se guarda automáticamente',
         onclick: () => guardar(),
-      }, sucio ? '💾 Guardar cambios' : '✓ Guardado') : null,
+      }, etiquetas[estadoGuardado]) : null,
       editable ? el('button', {
         class: 'btn', type: 'button',
         onclick: async () => {
@@ -134,7 +152,6 @@ export async function render(host, ctx) {
 
     const avisos = el('div', { class: 'row no-print' }, [
       cambios ? el('span', { class: 'chip info' }, `${cambios} registro(s) incorporados desde los avisos de inasistencia`) : null,
-      sucio ? el('span', { class: 'chip warn' }, 'Hay cambios sin guardar') : null,
       borrador.cerrado ? el('span', { class: 'chip ok' }, 'Parte cerrado') : null,
       borrador.actualizado ? el('span', { class: 'chip' }, `Actualizado ${new Date(borrador.actualizado).toLocaleString('es-UY')}`) : null,
     ]);
@@ -237,9 +254,8 @@ export async function render(host, ctx) {
   }
 
   pintar();
-  if (cambios && editable && !borrador.cerrado) {
-    aviso(`Se incorporaron ${cambios} registro(s) desde los avisos de inasistencia. Recordá guardar.`, 'warn', 6000);
-  }
+  // Lo que llega de los avisos de inasistencia se guarda solo, sin sermones.
+  if (cambios && editable) guardar();
 }
 
 function stat(titulo, valor) {

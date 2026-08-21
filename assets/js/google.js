@@ -64,6 +64,49 @@ export async function pedirCredencial() {
   try { id.prompt(); } catch (e) { console.warn('[google] prompt', e); }
 }
 
+/**
+ * Intenta renovar la credencial SIN molestar a la persona: como ya eligió su
+ * cuenta antes, Google puede reemitir el token solo. Si no puede (cerró la
+ * sesión de Google, bloqueó las cookies), rechaza y recién ahí se muestra la
+ * pantalla de ingreso. Es lo que evita el "tu sesión venció" cada hora.
+ */
+export async function renovarCredencialSilenciosa({ clientId, tiempoMax = 8000 }) {
+  const id = await cargarGis();
+  return new Promise((resolver, rechazar) => {
+    let listo = false;
+    const terminar = (fn, valor) => {
+      if (listo) return;
+      listo = true;
+      clearTimeout(reloj);
+      fn(valor);
+    };
+    const reloj = setTimeout(() => terminar(rechazar, new Error('Google no respondió a tiempo.')), tiempoMax);
+    id.initialize({
+      client_id: clientId,
+      auto_select: true,
+      cancel_on_tap_outside: false,
+      itp_support: true,
+      use_fedcm_for_prompt: true,
+      callback: (resp) => {
+        if (resp && resp.credential) terminar(resolver, resp.credential);
+        else terminar(rechazar, new Error('Google no entregó una credencial.'));
+      },
+    });
+    try {
+      id.prompt((momento) => {
+        try {
+          if ((momento.isNotDisplayed && momento.isNotDisplayed())
+            || (momento.isSkippedMoment && momento.isSkippedMoment())) {
+            terminar(rechazar, new Error('La renovación silenciosa no está disponible.'));
+          }
+        } catch { /* FedCM no siempre informa el momento; el reloj cubre */ }
+      });
+    } catch (e) {
+      terminar(rechazar, e);
+    }
+  });
+}
+
 export async function olvidarCuenta() {
   try {
     const id = await cargarGis();

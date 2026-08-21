@@ -4,7 +4,7 @@ import { $, $$, el, clear, hoyISO } from './utils.js';
 import { estado, cargar, suscribir, iniciarAutoRefresh } from './db.js';
 import { getSettings, setSettings, recordarInstitucion, urlDesdeInvitacion, institucionActiva } from './settings.js';
 import { aviso, avisoError, cerrarModal } from './ui.js';
-import { sesion, resolverSesion, puede, ETIQUETA_ROL } from './sesion.js';
+import { sesion, resolverSesion, renovarSesionSilenciosa, sesionPorVencer, puede, ETIQUETA_ROL } from './sesion.js';
 import { resumenDelDia } from './logica.js';
 
 import * as vistaInicio from './views/inicio.js';
@@ -242,12 +242,26 @@ async function iniciar() {
   document.addEventListener('settings:cambio', actualizarChrome);
   document.addEventListener('sesion:cambio', () => { actualizarChrome(); marcarNav(rutaActual.vista); });
   document.addEventListener('sesion:expirada', async (ev) => {
+    // Primero se intenta renovar en silencio: en el caso normal la persona ni
+    // se entera. Sólo si Google no puede, se vuelve a la pantalla de ingreso
+    // (que ya explica el motivo con calma, sin toasts de alarma).
     if (ev.detail && ev.detail.codigo === 'sesion_vencida') {
-      avisoError('Tu sesión de Google venció. Volvé a ingresar.');
+      if (await renovarSesionSilenciosa()) {
+        await cargar({ silencioso: true });
+        dibujar();
+        return;
+      }
     }
     try { await resolverSesion(); } catch { /* la pantalla de acceso se encarga */ }
     dibujar();
   });
+
+  // Renovación preventiva: si el token está por vencer, se renueva de fondo
+  // antes de que ninguna acción falle.
+  setInterval(async () => {
+    if (document.hidden || getSettings().modo !== 'google' || !sesion.autenticado) return;
+    if (sesionPorVencer()) await renovarSesionSilenciosa();
+  }, 60 * 1000);
 
   // Enlace de invitación: #/acceso?inst=<url> conecta este navegador con la
   // institución sin mostrar ninguna configuración.
@@ -267,9 +281,8 @@ async function iniciar() {
     console.warn('[sesion]', e);
   }
   await cargar();
-  if (estado.meta.error && getSettings().apiUrl) {
-    avisoError(`No se pudo leer la información de la institución: ${estado.meta.error}`);
-  }
+  // Los problemas de conexión se muestran en el indicador de la barra lateral
+  // y en la pantalla que corresponda: sin toasts de alarma al arrancar.
   actualizarChrome();
   iniciarAutoRefresh();
   await dibujar();

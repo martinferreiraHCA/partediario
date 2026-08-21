@@ -6,6 +6,12 @@ import { el, clear, $ } from './utils.js';
 
 export function aviso(mensaje, tipo = '', ms = 4000) {
   const host = $('#toasts');
+  // Sin repetidos ni pilas: el mismo texto no se muestra dos veces a la vez
+  // y nunca hay más de tres avisos en pantalla.
+  for (const previo of host.children) {
+    if (previo.textContent === String(mensaje)) return previo;
+  }
+  while (host.children.length >= 3) host.firstChild.remove();
   const nodo = el('div', { class: `toast ${tipo}`, role: 'status' }, mensaje);
   host.append(nodo);
   setTimeout(() => {
