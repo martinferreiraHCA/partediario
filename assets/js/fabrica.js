@@ -20,6 +20,12 @@ export const SCOPES_FABRICA = [
 
 export const URL_ACTIVAR_API = 'https://script.google.com/home/usersettings';
 
+/** Página de la consola de Google Cloud para habilitar la API en el proyecto del sitio. */
+export function urlActivarApiProyecto(clientId) {
+  const proyecto = String(clientId || '').split('-')[0];
+  return `https://console.cloud.google.com/apis/library/script.googleapis.com${proyecto ? `?project=${proyecto}` : ''}`;
+}
+
 export class ErrorFabrica extends Error {
   constructor(mensaje, { codigo = '', causa = null } = {}) {
     super(mensaje);
@@ -47,9 +53,21 @@ async function llamar(token, metodo, ruta, cuerpo = null) {
   try { datos = await resp.json(); } catch { datos = null; }
   if (!resp.ok) {
     const mensaje = (datos && datos.error && datos.error.message) || `Google respondió ${resp.status}.`;
+    // Google usa dos 403 muy parecidos: uno por el interruptor personal de la
+    // cuenta y otro porque la API no está habilitada en el proyecto del sitio.
+    if (resp.status === 403 && /User has not enabled/i.test(mensaje)) {
+      throw new ErrorFabrica(
+        'La cuenta elegida todavía no tiene activada la API de Google Apps Script.',
+        { codigo: 'api_desactivada' });
+    }
+    if (resp.status === 403 && /Apps Script API/i.test(mensaje) && /project|disabled/i.test(mensaje)) {
+      throw new ErrorFabrica(
+        'Al sitio le falta habilitar la API de Apps Script en su proyecto de Google Cloud.',
+        { codigo: 'api_proyecto' });
+    }
     if (resp.status === 403 && /Apps Script API/i.test(mensaje)) {
       throw new ErrorFabrica(
-        'La cuenta todavía no tiene activada la API de Google Apps Script.',
+        'La cuenta elegida todavía no tiene activada la API de Google Apps Script.',
         { codigo: 'api_desactivada' });
     }
     if (resp.status === 401) {

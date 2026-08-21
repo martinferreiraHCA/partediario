@@ -27,11 +27,14 @@ Los pasos, tal como los ve la gente:
    Drive, sus planillas y su formulario. La pantalla detecta la autorización y termina sola: carpeta
    creada, administradores dados de alta, enlace de invitación disponible.
 
-Dos detalles de Google que conviene saber:
+Tres detalles de Google que conviene saber (el asistente detecta cada caso y muestra el enlace justo):
 
-- **API de Apps Script**: la cuenta de la institución tiene que tener prendido el interruptor
-  «API de Google Apps Script» en [script.google.com/home/usersettings](https://script.google.com/home/usersettings)
-  (una sola vez). Si está apagado, el asistente lo detecta, muestra el enlace y ofrece reintentar.
+- **API en el proyecto del sitio** (una sola vez, la hace el equipo del sitio, vale para todas las
+  instituciones): habilitar la «Apps Script API» en el proyecto de Google Cloud del sitio, en
+  [console.cloud.google.com/apis/library/script.googleapis.com](https://console.cloud.google.com/apis/library/script.googleapis.com).
+- **Interruptor de la cuenta de la institución** (una sola vez por cuenta): prender «API de Google
+  Apps Script» en [script.google.com/home/usersettings](https://script.google.com/home/usersettings),
+  con la misma cuenta que se elige en el asistente. Ambos cambios demoran un par de minutos en regir.
 - **Usuarios de prueba**: mientras la pantalla de consentimiento OAuth del sitio esté en modo
   *Externo* sin publicar, la cuenta de la institución debe estar agregada como *usuario de prueba* en
   Google Cloud Console para poder aceptar los permisos de creación. Publicando la aplicación, esto

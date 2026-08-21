@@ -18,7 +18,7 @@ import {
 } from '../settings.js';
 import { iniciarSesionGoogle, obtenerClientId, sesion } from '../sesion.js';
 import { prepararIngresoGoogle, datosDelToken, pedirTokenAcceso } from '../google.js';
-import { crearBackend, esperarAutorizacion, SCOPES_FABRICA, URL_ACTIVAR_API, ErrorFabrica } from '../fabrica.js';
+import { crearBackend, esperarAutorizacion, SCOPES_FABRICA, URL_ACTIVAR_API, urlActivarApiProyecto, ErrorFabrica } from '../fabrica.js';
 import { apiGet, apiPost } from '../api.js';
 import { cargar } from '../db.js';
 
@@ -340,12 +340,24 @@ function asistenteCrear(contenedor, alEntrar) {
         paso3();
       } catch (e) {
         if (e instanceof ErrorFabrica && e.codigo === 'api_desactivada') {
-          pintarProgreso('', 'A esa cuenta le falta un permiso de Google que se activa una sola vez.');
+          pintarProgreso('', 'A la cuenta elegida le falta un permiso de Google que se activa una sola vez.');
           progreso.append(
             el('p', { class: 'small muted' },
-              'Abrí la página de configuración de Google con la cuenta de la institución, prendé el interruptor «API de Google Apps Script» y volvé a intentar.'),
+              'Abrí la página de configuración de Google con la MISMA cuenta que elegiste recién, prendé el interruptor «API de Google Apps Script», esperá un par de minutos y volvé a intentar.'),
             el('div', { class: 'row' }, [
               el('a', { class: 'btn btn-sm', href: URL_ACTIVAR_API, target: '_blank', rel: 'noopener' }, '⚙️ Abrir configuración de Google'),
+            ]),
+          );
+        } else if (e instanceof ErrorFabrica && e.codigo === 'api_proyecto') {
+          pintarProgreso('', 'Falta una activación del propio sitio (la hace el equipo del sitio, una sola vez para todas las instituciones).');
+          progreso.append(
+            el('p', { class: 'small muted' },
+              'Hay que habilitar la «Apps Script API» en el proyecto de Google Cloud del sitio: abrí el enlace, tocá HABILITAR, esperá un par de minutos y reintentá.'),
+            el('div', { class: 'row' }, [
+              el('a', {
+                class: 'btn btn-sm', target: '_blank', rel: 'noopener',
+                href: urlActivarApiProyecto(getSettings().clientId || CLIENT_ID_SITIO),
+              }, '🔌 Habilitar la API en el proyecto del sitio'),
             ]),
           );
         } else {
