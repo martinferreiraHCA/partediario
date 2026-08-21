@@ -2,7 +2,7 @@
 
 import { $, $$, el, clear, hoyISO } from './utils.js';
 import { estado, cargar, suscribir, iniciarAutoRefresh } from './db.js';
-import { getSettings, recordarInstitucion, urlDesdeInvitacion, institucionActiva } from './settings.js';
+import { getSettings, setSettings, recordarInstitucion, urlDesdeInvitacion, institucionActiva } from './settings.js';
 import { aviso, avisoError, cerrarModal } from './ui.js';
 import { sesion, resolverSesion, puede, ETIQUETA_ROL } from './sesion.js';
 import { resumenDelDia } from './logica.js';
@@ -72,6 +72,24 @@ const ctx = {
 
 /* ---------------- enrutador ---------------- */
 
+/** #/demo activa el modo de prueba; #/salir-demo lo termina. */
+async function atenderRutasEspeciales() {
+  const bruto = location.hash.replace(/^#\/?/, '');
+  if (bruto.startsWith('demo')) {
+    setSettings({ modo: 'demo' });
+    await cargar();
+    history.replaceState(null, '', location.pathname + '#/inicio');
+    return true;
+  }
+  if (bruto.startsWith('salir-demo')) {
+    setSettings({ modo: 'google' });
+    await cargar();
+    history.replaceState(null, '', location.pathname + '#/inicio');
+    return true;
+  }
+  return false;
+}
+
 function leerRuta() {
   const bruto = location.hash.replace(/^#\/?/, '') || 'inicio';
   const [nombre, consulta] = bruto.split('?');
@@ -138,6 +156,7 @@ function marcarNav(vista) {
 }
 
 async function alCambiarHash() {
+  await atenderRutasEspeciales();
   rutaActual = leerRuta();
   cerrarModal();
   cerrarMenu();
@@ -170,12 +189,14 @@ function actualizarChrome() {
     conn.title = 'Los datos se guardan sólo en este navegador.';
   }
 
+  $('#demo-banner').hidden = getSettings().modo !== 'demo';
+
   const inst = institucionActiva();
-  $('#brand-liceo').textContent = sesion.modo === 'google'
-    ? (sesion.autenticado
+  $('#brand-liceo').textContent = modo === 'demo'
+    ? `${estado.config.liceo || 'Liceo'} · modo de prueba`
+    : (sesion.autenticado
         ? `${estado.config.liceo || (inst && inst.nombre) || 'Institución'} · ${ETIQUETA_ROL[sesion.rol] || sesion.rol}`
-        : ((inst && inst.nombre) || 'Sin institución conectada'))
-    : `${estado.config.liceo || 'Liceo'} · demostración`;
+        : ((inst && inst.nombre) || 'Sin institución conectada'));
 
   const resumen = resumenDelDia(estado, hoyISO());
   const pendientes = estado.inasistencias.filter(i => i.estado === 'nueva').length;
@@ -210,6 +231,13 @@ async function iniciar() {
   });
 
   window.addEventListener('hashchange', alCambiarHash);
+  $('#btn-salir-demo').addEventListener('click', async () => {
+    setSettings({ modo: 'google' });
+    await cargar();
+    actualizarChrome();
+    location.hash = '#/inicio';
+    dibujar();
+  });
   suscribir(() => actualizarChrome());
   document.addEventListener('settings:cambio', actualizarChrome);
   document.addEventListener('sesion:cambio', () => { actualizarChrome(); marcarNav(rutaActual.vista); });
@@ -229,6 +257,7 @@ async function iniciar() {
     history.replaceState(null, '', location.pathname + '#/inicio');
   }
 
+  await atenderRutasEspeciales();
   rutaActual = leerRuta();
   if (!location.hash) location.hash = '#/inicio';
 

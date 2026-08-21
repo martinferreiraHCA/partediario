@@ -97,6 +97,15 @@ button,input,select,textarea{font:inherit; color:inherit}
 .conn.demo .dot{background:var(--amber)}
 .conn.error .dot{background:var(--red)}
 
+.demo-banner[hidden]{display:none}
+.demo-banner{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:space-between;
+  padding:9px 26px; font-size:13px;
+  background:var(--amber-soft); color:var(--amber);
+  border-bottom:1px solid color-mix(in srgb, var(--amber) 35%, transparent);
+}
+.demo-banner strong{color:inherit}
+
 .topbar{
   position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:14px;
   padding:14px 26px; background:color-mix(in srgb, var(--bg) 88%, transparent);
@@ -290,7 +299,16 @@ table.tbl tr.editable td[contenteditable]:focus{background:var(--primary-soft); 
   }
   .sidebar.open{transform:none}
   .view{padding:16px 14px 60px}
-  .topbar{padding:12px 14px}
+  .demo-banner[hidden]{display:none}
+.demo-banner{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:space-between;
+  padding:9px 26px; font-size:13px;
+  background:var(--amber-soft); color:var(--amber);
+  border-bottom:1px solid color-mix(in srgb, var(--amber) 35%, transparent);
+}
+.demo-banner strong{color:inherit}
+
+.topbar{padding:12px 14px}
   .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
 }
 

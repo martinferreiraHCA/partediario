@@ -32,16 +32,13 @@ export async function render(host, ctx) {
 
 function seccionMiInstitucion(ctx, ajustes) {
   if (ajustes.modo !== 'google') {
-    return tarjeta('Modo demostración', el('div', { class: 'card-pad stack' }, [
+    return tarjeta('Modo de prueba', el('div', { class: 'card-pad stack' }, [
       el('p', { class: 'small muted' },
-        'Estás recorriendo el sistema con datos de ejemplo guardados en este navegador. Nada de lo que hagas acá toca una institución real.'),
+        'Estás en el modo de prueba: datos de ejemplo guardados sólo en este navegador. Nada de lo que hagas acá toca una institución real. Para el uso normal, salí y entrá con tu cuenta de Google.'),
       el('button', {
         class: 'btn', type: 'button',
-        onclick: () => {
-          setSettings({ modo: 'google', idToken: '' });
-          ctx.refrescar();
-        },
-      }, 'Salir de la demostración'),
+        onclick: () => { location.hash = '#/salir-demo'; },
+      }, 'Salir del modo de prueba'),
     ]));
   }
 

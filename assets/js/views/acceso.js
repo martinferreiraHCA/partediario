@@ -47,20 +47,11 @@ function pantallaIngreso(contenedor, institucion, alEntrar) {
     el('p', { class: 'hint', style: 'text-align:center' },
       'Sólo pueden entrar las cuentas de Google registradas por la institución. Si la tuya no funciona, pedile a quien la administra que la agregue.'),
     el('div', { class: 'sep' }),
-    el('div', { class: 'row', style: 'justify-content:center' }, [
+    el('div', { class: 'row', style: 'justify-content:center' },
       el('button', {
         class: 'btn btn-ghost btn-sm', type: 'button',
         onclick: () => pantallaElegir(contenedor, alEntrar),
-      }, 'Cambiar de institución'),
-      el('button', {
-        class: 'btn btn-ghost btn-sm', type: 'button',
-        onclick: async () => {
-          setSettings({ modo: 'demo' });
-          await cargar();
-          alEntrar();
-        },
-      }, 'Ver la demostración'),
-    ]),
+      }, 'Cambiar de institución')),
   ]));
 
   const pintarMensaje = () => {
@@ -173,16 +164,10 @@ function pantallaElegir(contenedor, alEntrar) {
       }, '🏫 Crear institución'),
     ]),
 
+    el('div', { class: 'sep' }),
     el('p', { class: 'hint', style: 'text-align:center' }, [
-      '¿Querés mirar el sistema sin conectar nada? ',
-      el('a', {
-        href: '#', onclick: async (ev) => {
-          ev.preventDefault();
-          setSettings({ modo: 'demo' });
-          await cargar();
-          alEntrar();
-        },
-      }, 'Abrir la demostración'),
+      'Aparte del uso normal existe un ', el('a', { href: '#/demo' }, 'modo de prueba'),
+      ' con datos de ejemplo, para conocer el sistema sin tocar ninguna institución.',
     ]),
   ]));
 }

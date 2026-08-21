@@ -1,5 +1,15 @@
 # Manual de uso
 
+## Modo de prueba (separado del uso normal)
+
+El sistema tiene un modo de prueba con datos de ejemplo, pensado para conocerlo sin tocar ninguna
+institución. Se entra sólo por su enlace propio —agregando `#/demo` a la dirección del sitio— o desde
+la nota al pie de la pantalla de acceso. Mientras está activo se ve una franja permanente que lo
+indica, y se sale con un clic («Salir del modo de prueba»), que devuelve al ingreso normal.
+
+Nada de lo que se haga en el modo de prueba se guarda en una institución real: los datos de ejemplo
+viven sólo en ese navegador.
+
 ## Inicio
 
 Resumen del día: docentes ausentes, grupos y horas afectadas, horas sin cobertura, avisos nuevos,

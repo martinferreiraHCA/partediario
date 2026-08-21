@@ -63,11 +63,13 @@ Estructura que se crea en Drive con la configuración inicial:
 - El **ID de cliente OAuth** es único del sitio (`CLIENT_ID_SITIO`), porque pertenece al origen web,
   no a una institución.
 
-## Probarla sin configurar nada
+## Modo de prueba (separado del uso normal)
 
-Abrí la aplicación publicada y usá el **modo demostración**: genera un horario completo, avisos de
-inasistencia y un parte diario de ejemplo, guardados sólo en tu navegador. Sirve para recorrer todas
-las pantallas antes de conectar Google.
+Para conocer el sistema sin tocar ninguna institución existe un modo de prueba con horario, avisos y
+parte de ejemplo, guardados sólo en el navegador. Se entra únicamente por su enlace propio
+(`…/#/demo`) o desde la nota al pie de la pantalla de acceso; mientras está activo una franja lo
+indica en todo momento y se sale con un clic. El flujo normal —ingresar con Google a una institución—
+no muestra nada del modo de prueba.
 
 ## Alta de una institución
 
