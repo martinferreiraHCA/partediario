@@ -71,6 +71,42 @@ export async function olvidarCuenta() {
   } catch { /* si no cargó GIS no hay nada que olvidar */ }
 }
 
+/* ---------------- permisos para crear instituciones ---------------- */
+
+/**
+ * Pide un token de acceso OAuth a Google (Google Identity Services, flujo
+ * implícito). Se usa una sola vez, al crear una institución: con él el sitio
+ * crea y publica el proyecto de Apps Script dentro de la cuenta que la persona
+ * elija. El token vive sólo en memoria y expira en una hora.
+ */
+export async function pedirTokenAcceso({ clientId, scopes }) {
+  await cargarGis();
+  if (!window.google.accounts.oauth2) {
+    throw new Error('El componente de permisos de Google no está disponible.');
+  }
+  return new Promise((resolver, rechazar) => {
+    let resuelto = false;
+    const cliente = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: scopes.join(' '),
+      prompt: 'select_account',
+      callback: (resp) => {
+        resuelto = true;
+        if (resp && resp.access_token) resolver(resp.access_token);
+        else rechazar(new Error(resp && resp.error_description || 'Google no entregó el permiso.'));
+      },
+      error_callback: (err) => {
+        if (resuelto) return;
+        const motivo = err && (err.type === 'popup_closed' || err.type === 'popup_failed_to_open')
+          ? 'Se cerró la ventana de Google antes de terminar.'
+          : (err && err.message) || 'No se pudo completar el permiso con Google.';
+        rechazar(new Error(motivo));
+      },
+    });
+    cliente.requestAccessToken();
+  });
+}
+
 /* ---------------- utilidades del token ---------------- */
 
 export function decodificarJwt(token) {

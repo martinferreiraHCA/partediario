@@ -71,11 +71,11 @@ las pantallas antes de conectar Google.
 
 ## Alta de una institución
 
-La hace un superadministrador junto con quien dirige el liceo, desde la propia aplicación
-(**Crear institución** en la pantalla de acceso). El asistente guía los cuatro pasos: la institución
-implementa `apps-script/Codigo.gs` como aplicación web **desde su cuenta de Google**, se verifica la
-URL, se le pone nombre y el sistema crea la carpeta en **su** Drive. Su cuenta queda como
-administradora automáticamente. El detalle está en [`docs/instalacion.md`](docs/instalacion.md).
+Es **totalmente automática** (nadie copia código): un superadministrador abre **Crear institución**,
+pone el nombre, y la persona que dirige el liceo elige su cuenta de Google y acepta los permisos. El
+sitio usa la API de Apps Script para crear el proyecto en esa cuenta, subir el código, publicarlo como
+aplicación web y armar la carpeta en **su** Drive; la cuenta dueña autoriza al final con un clic y
+queda como administradora. El detalle está en [`docs/instalacion.md`](docs/instalacion.md).
 
 Después, cada institución por su cuenta:
 
@@ -119,6 +119,7 @@ assets/js/
   logica.js                Cruce de inasistencias, parte diario y coberturas
   modelo.js                Modelo de datos y configuración por defecto
   importar.js              Lectura de planillas (CSV nativo, XLSX/ODS con SheetJS)
+  fabrica.js               Creación automática de instituciones (API de Apps Script)
   exportar.js              Generación de ODS / XLSX / CSV (escritor ZIP propio)
   demo.js                  Datos de demostración
   views/                   Una pantalla por archivo

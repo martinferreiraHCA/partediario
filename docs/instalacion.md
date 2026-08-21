@@ -10,30 +10,32 @@ Al sistema se entra **únicamente con cuenta de Google**, y sólo si ese correo 
 
 ---
 
-## Cómo se crea una institución (asistente)
+## Cómo se crea una institución (automático)
 
-1. Quien dirige el liceo entra a [script.google.com](https://script.google.com) **con la cuenta de
-   Google de la institución**, crea un *Nuevo proyecto*, pega el contenido de
-   [`apps-script/Codigo.gs`](../apps-script/Codigo.gs) y guarda.
-2. **Implementar → Nueva implementación → Aplicación web**: ejecutar como **Yo**, acceso
-   **Cualquier usuario**. Acepta los permisos y copia la **URL de la aplicación web** (`…/exec`).
-3. Un superadministrador abre la aplicación → **Crear institución**, se identifica con su cuenta de
-   Google y sigue el asistente: pega esa URL, pone el nombre del liceo y confirma.
-4. El sistema crea la carpeta con las planillas y el formulario **en el Drive de la institución**.
-   La cuenta que implementó el proyecto queda como **administradora y dueña de todo**; el equipo del
-   sitio queda precargado como administrador para poder asistirla, y **puede quitarse en cualquier
-   momento** desde Usuarios: la soberanía de los datos es de la institución.
+Nadie copia ni pega código. El asistente **Crear institución** de la pantalla de acceso hace todo por
+API: crea el proyecto de Apps Script en la cuenta de la institución, le sube el código del sistema
+(que el propio sitio publica en `apps-script/`), lo publica como aplicación web y arma la carpeta con
+las planillas y el formulario en **su** Drive.
 
-La estructura creada:
+Los pasos, tal como los ve la gente:
 
-```text
-📁 Gestión Educativa – <Liceo>
-   ├── 01 · Configuración    → planilla «Configuración» (General, Usuarios, Turnos, Años, Motivos)
-   ├── 02 · Horarios         → planilla «Horarios» + carpeta «Originales»
-   ├── 03 · Inasistencias    → formulario docente + planilla de avisos
-   ├── 04 · Partes diarios   → planilla «Partes diarios» + un archivo por día (AAAA/MM)
-   └── 05 · Exportaciones    → copias y respaldos
-```
+1. Un superadministrador toca **Crear institución** y se identifica con su cuenta de Google.
+2. Pone el **nombre** del liceo (y, si quiere, más administradores).
+3. Toca **Elegir cuenta y crear**: Google pide elegir la **cuenta de la institución** y aceptar los
+   permisos. El sitio crea y publica el proyecto solo, mostrando el progreso.
+4. **Autorizar**: se abre una pestaña de Google donde la cuenta dueña acepta que el sistema use su
+   Drive, sus planillas y su formulario. La pantalla detecta la autorización y termina sola: carpeta
+   creada, administradores dados de alta, enlace de invitación disponible.
+
+Dos detalles de Google que conviene saber:
+
+- **API de Apps Script**: la cuenta de la institución tiene que tener prendido el interruptor
+  «API de Google Apps Script» en [script.google.com/home/usersettings](https://script.google.com/home/usersettings)
+  (una sola vez). Si está apagado, el asistente lo detecta, muestra el enlace y ofrece reintentar.
+- **Usuarios de prueba**: mientras la pantalla de consentimiento OAuth del sitio esté en modo
+  *Externo* sin publicar, la cuenta de la institución debe estar agregada como *usuario de prueba* en
+  Google Cloud Console para poder aceptar los permisos de creación. Publicando la aplicación, esto
+  deja de hacer falta.
 
 ## Cómo se suma el equipo
 

@@ -17,11 +17,10 @@ import {
   CLIENT_ID_SITIO, SUPER_ADMINS, esSuperAdmin,
 } from '../settings.js';
 import { iniciarSesionGoogle, obtenerClientId, sesion } from '../sesion.js';
-import { prepararIngresoGoogle, datosDelToken } from '../google.js';
+import { prepararIngresoGoogle, datosDelToken, pedirTokenAcceso } from '../google.js';
+import { crearBackend, esperarAutorizacion, SCOPES_FABRICA, URL_ACTIVAR_API, ErrorFabrica } from '../fabrica.js';
 import { apiGet, apiPost } from '../api.js';
 import { cargar } from '../db.js';
-
-const CODIGO_BACKEND_URL = 'https://raw.githubusercontent.com/martinferreiraHCA/partediario/main/apps-script/Codigo.gs';
 
 export function render(host, { alEntrar }) {
   const contenedor = el('div', { style: 'max-width:560px;margin:5vh auto' });
@@ -253,145 +252,203 @@ function verificarSuperAdmin(contenedor, alEntrar) {
 /* ---------------- asistente de creación ---------------- */
 
 /**
- * Guía a quien dirige un liceo para crear su institución en su propio Drive.
- * Los pasos técnicos (Apps Script) se presentan como instrucciones simples;
- * el resto lo hace el sistema.
+ * Crea una institución de manera totalmente automática. La persona que dirige
+ * el liceo sólo elige su cuenta de Google y acepta los permisos: el sitio crea
+ * el proyecto, sube el código, lo publica y arma la carpeta en su Drive.
  */
 function asistenteCrear(contenedor, alEntrar) {
   const datos = {
-    url: '', nombre: '',
-    // El equipo del sitio queda como administrador para poder asistir a la
-    // institución; quien la dirige puede quitarlo cuando quiera desde Usuarios.
+    nombre: '',
     admins: SUPER_ADMINS.map(sa => `${sa.nombre}, ${sa.emails.join(', ')}`).join('\n'),
+    token: '',
+    backend: null,
   };
 
+  /* --- paso 1: datos de la institución --- */
   const paso1 = () => {
-    clear(contenedor).append(tarjetaPaso(1, 'Preparar tu Google Drive', [
-      el('p', { class: 'small' },
-        'La institución vive en tu cuenta de Google: vos sos dueño de la carpeta, de las planillas y del formulario. Este sitio nunca guarda tus datos.'),
-      el('ol', { class: 'small', style: 'margin:0;padding-left:18px;display:grid;gap:6px' }, [
-        el('li', {}, [
-          'Abrí ', el('a', { href: 'https://script.google.com', target: '_blank', rel: 'noopener' }, 'script.google.com'),
-          ' con la cuenta de Google de la institución y creá un ', el('b', {}, 'Nuevo proyecto'), '.',
-        ]),
-        el('li', {}, [
-          el('a', { href: CODIGO_BACKEND_URL, target: '_blank', rel: 'noopener' }, 'Abrí el código del sistema'),
-          ', copialo entero y pegalo en el editor reemplazando lo que haya. Guardá.',
-        ]),
-        el('li', {}, [
-          el('b', {}, 'Implementar → Nueva implementación → Aplicación web'), ': ejecutar como ',
-          el('b', {}, 'Yo'), ', acceso ', el('b', {}, 'Cualquier usuario'), '. Aceptá los permisos.',
-        ]),
-        el('li', {}, ['Copiá la ', el('b', {}, 'URL de la aplicación web'), ' (termina en /exec).']),
-      ]),
-      el('div', { class: 'row', style: 'justify-content:space-between' }, [
-        botonVolver(() => pantallaElegir(contenedor, alEntrar)),
-        el('button', { class: 'btn btn-primary', type: 'button', onclick: paso2 }, 'Ya tengo la URL →'),
-      ]),
-    ]));
-  };
-
-  const paso2 = () => {
-    const campoUrl = el('input', { type: 'url', value: datos.url, placeholder: 'https://script.google.com/macros/s/…/exec' });
-    const estado = el('div', {});
-    clear(contenedor).append(tarjetaPaso(2, 'Conectar con tu proyecto', [
-      el('label', { class: 'field' }, [el('span', {}, 'URL de la aplicación web'), campoUrl]),
-      estado,
-      el('div', { class: 'row', style: 'justify-content:space-between' }, [
-        botonVolver(paso1),
-        el('button', {
-          class: 'btn btn-primary', type: 'button',
-          onclick: async (ev) => {
-            const url = urlDesdeInvitacion(campoUrl.value) || campoUrl.value.trim();
-            if (!/^https:\/\/script\.google\.com\/macros\//.test(url)) {
-              avisoError('Esa no parece la URL de una aplicación web de Apps Script.');
-              return;
-            }
-            ev.target.disabled = true;
-            clear(estado).append(el('span', { class: 'muted small' }, 'Verificando…'));
-            setSettings({ apiUrl: url, modo: 'google' });
-            try {
-              const resp = await apiGet('ping');
-              datos.url = url;
-              if (resp.instalado) {
-                clear(estado).append(el('span', { class: 'chip ok' }, 'Esa institución ya está creada: podés ingresar directamente.'));
-                recordarInstitucion('Institución', url);
-                setTimeout(() => pantallaIngreso(contenedor, institucionActiva(), alEntrar), 900);
-              } else {
-                paso3();
-              }
-            } catch (e) {
-              clear(estado).append(el('span', { class: 'chip warn' },
-                e.message || 'No responde. Revisá que la implementación tenga acceso «Cualquier usuario».'));
-            } finally {
-              ev.target.disabled = false;
-            }
-          },
-        }, 'Verificar y continuar →'),
-      ]),
-    ]));
-  };
-
-  const paso3 = () => {
     const campoNombre = el('input', { type: 'text', value: datos.nombre, placeholder: 'Liceo N.º 5' });
     const campoAdmins = el('textarea', {
       placeholder: 'Un administrador por línea: Nombre Apellido, correo@gmail.com',
     }, datos.admins);
-    const salida = el('div', {});
-    clear(contenedor).append(tarjetaPaso(3, 'Crear la institución', [
+    clear(contenedor).append(tarjetaPaso(1, 'Datos de la institución', [
+      el('p', { class: 'small muted' },
+        'Todo va a quedar en el Google Drive de la cuenta que elijas en el paso siguiente: esa cuenta es la dueña de los datos y administra los accesos.'),
       el('label', { class: 'field' }, [el('span', {}, 'Nombre de la institución'), campoNombre]),
       el('label', { class: 'field' }, [
         el('span', {}, 'Otros administradores (opcional)'), campoAdmins,
-        el('span', { class: 'hint' }, 'La cuenta de Google que implementó el proyecto queda como administradora automáticamente: es la dueña de la carpeta y de los datos. El equipo del sitio viene precargado para poder asistirla, y puede quitarse en cualquier momento desde Usuarios.'),
+        el('span', { class: 'hint' },
+          'La cuenta dueña queda como administradora automáticamente. El equipo del sitio viene precargado para poder asistirla y puede quitarse cuando quiera desde Usuarios.'),
       ]),
-      salida,
       el('div', { class: 'row', style: 'justify-content:space-between' }, [
-        botonVolver(paso2),
+        botonVolver(() => pantallaElegir(contenedor, alEntrar)),
         el('button', {
           class: 'btn btn-primary', type: 'button',
-          onclick: async (ev) => {
+          onclick: () => {
             const nombre = campoNombre.value.trim();
             if (!nombre) { avisoError('Poné el nombre de la institución.'); return; }
             datos.nombre = nombre;
             datos.admins = campoAdmins.value;
-            ev.target.disabled = true;
-            clear(salida).append(el('p', { class: 'muted small' }, 'Creando la estructura en tu Drive…'));
-            try {
-              const resp = await apiPost('instalar', {
-                liceo: nombre,
-                clientId: getSettings().clientId || CLIENT_ID_SITIO,
-                administradores: interpretarAdmins(campoAdmins.value),
-              });
-              recordarInstitucion(nombre, datos.url);
-              if (resp.formUrl) setSettings({ formUrl: resp.formUrl });
-              paso4(resp);
-            } catch (e) {
-              clear(salida).append(el('p', { class: 'chip warn', style: 'display:block;padding:9px 12px' },
-                e.message || 'No se pudo crear la institución.'));
-              ev.target.disabled = false;
-            }
+            paso2();
           },
-        }, '⚙️ Crear en mi Drive'),
+        }, 'Continuar →'),
       ]),
     ]));
   };
 
+  /* --- paso 2: cuenta dueña + creación automática --- */
+  const paso2 = () => {
+    const progreso = el('div', { class: 'stack' });
+    const acciones = el('div', { class: 'row', style: 'justify-content:space-between' });
+
+    clear(contenedor).append(tarjetaPaso(2, 'Crear en el Drive de la institución', [
+      el('p', { class: 'small muted' }, [
+        'Al tocar el botón, Google va a pedir elegir la ', el('b', {}, 'cuenta de la institución'),
+        ' y aceptar los permisos. Después el sitio hace todo solo: crea el proyecto, lo publica y arma la carpeta.',
+      ]),
+      progreso,
+      acciones,
+    ]));
+
+    const pintarAcciones = (botones) => { clear(acciones).append(...botones); };
+    pintarAcciones([
+      botonVolver(paso1),
+      el('button', { class: 'btn btn-primary', type: 'button', onclick: crear }, '🚀 Elegir cuenta y crear'),
+    ]);
+
+    const ETAPAS = {
+      codigo: 'Preparando el código del sistema',
+      proyecto: 'Creando el proyecto en la cuenta elegida',
+      subida: 'Instalando el sistema en el proyecto',
+      version: 'Congelando la primera versión',
+      publicacion: 'Publicando la aplicación web',
+    };
+    const hechas = [];
+    const pintarProgreso = (actual = '', error = '') => {
+      clear(progreso);
+      for (const clave of Object.keys(ETAPAS)) {
+        if (!hechas.includes(clave) && clave !== actual) continue;
+        const esActual = clave === actual && !hechas.includes(clave);
+        progreso.append(el('p', { class: 'small' }, [
+          esActual ? '⏳ ' : '✅ ', ETAPAS[clave], esActual ? '…' : '',
+        ]));
+      }
+      if (error) {
+        progreso.append(el('p', { class: 'chip warn', style: 'display:block;padding:9px 12px' }, error));
+      }
+    };
+
+    async function crear(ev) {
+      ev.target.disabled = true;
+      try {
+        if (!datos.token) {
+          datos.token = await pedirTokenAcceso({ clientId: CLIENT_ID_SITIO, scopes: SCOPES_FABRICA });
+        }
+        datos.backend = await crearBackend({
+          token: datos.token,
+          nombre: datos.nombre,
+          alAvanzar: (etapa) => {
+            pintarProgreso(etapa);
+            hechas.push(etapa);
+          },
+        });
+        pintarProgreso();
+        paso3();
+      } catch (e) {
+        if (e instanceof ErrorFabrica && e.codigo === 'api_desactivada') {
+          pintarProgreso('', 'A esa cuenta le falta un permiso de Google que se activa una sola vez.');
+          progreso.append(
+            el('p', { class: 'small muted' },
+              'Abrí la página de configuración de Google con la cuenta de la institución, prendé el interruptor «API de Google Apps Script» y volvé a intentar.'),
+            el('div', { class: 'row' }, [
+              el('a', { class: 'btn btn-sm', href: URL_ACTIVAR_API, target: '_blank', rel: 'noopener' }, '⚙️ Abrir configuración de Google'),
+            ]),
+          );
+        } else {
+          if (e instanceof ErrorFabrica && e.codigo === 'token_vencido') datos.token = '';
+          pintarProgreso('', e.message || 'No se pudo crear el proyecto.');
+        }
+        pintarAcciones([
+          botonVolver(paso1),
+          el('button', { class: 'btn btn-primary', type: 'button', onclick: crear }, '↻ Reintentar'),
+        ]);
+      }
+    }
+  };
+
+  /* --- paso 3: autorización del dueño --- */
+  const paso3 = () => {
+    const estadoNodo = el('p', { class: 'small muted' }, 'Cuando aceptes los permisos, esta pantalla sigue sola.');
+    let vigilando = false;
+
+    clear(contenedor).append(tarjetaPaso(3, 'Autorizar el sistema', [
+      el('p', { class: 'small' }, [
+        'Último permiso: la primera vez que se abre, Google le pide a la cuenta dueña autorizar al sistema a usar ',
+        el('b', {}, 'su'), ' Drive, sus planillas y su formulario.',
+      ]),
+      el('ol', { class: 'small muted', style: 'margin:0;padding-left:18px' }, [
+        el('li', {}, 'Tocá «Autorizar»: se abre una pestaña de Google.'),
+        el('li', {}, 'Elegí la cuenta de la institución y presioná Revisar permisos → Permitir.'),
+      ]),
+      el('div', { class: 'row' }, [
+        el('a', {
+          class: 'btn btn-primary', href: datos.backend.execUrl, target: '_blank', rel: 'noopener',
+          onclick: () => vigilar(),
+        }, '🔐 Autorizar'),
+      ]),
+      estadoNodo,
+    ]));
+
+    async function vigilar() {
+      if (vigilando) return;
+      vigilando = true;
+      estadoNodo.textContent = 'Esperando la autorización…';
+      try {
+        await esperarAutorizacion(datos.backend.execUrl, {
+          alIntentar: (n) => { estadoNodo.textContent = `Esperando la autorización… (${n})`; },
+        });
+        estadoNodo.textContent = 'Autorizado. Creando la carpeta de la institución…';
+        await instalar();
+      } catch (e) {
+        vigilando = false;
+        estadoNodo.textContent = e.message || 'Todavía no se autorizó. Tocá «Autorizar» para intentar de nuevo.';
+      }
+    }
+
+    async function instalar() {
+      setSettings({ apiUrl: datos.backend.execUrl, modo: 'google' });
+      try {
+        const resp = await apiPost('instalar', {
+          liceo: datos.nombre,
+          clientId: getSettings().clientId || CLIENT_ID_SITIO,
+          administradores: interpretarAdmins(datos.admins),
+        });
+        recordarInstitucion(datos.nombre, datos.backend.execUrl);
+        if (resp.formUrl) setSettings({ formUrl: resp.formUrl });
+        paso4(resp);
+      } catch (e) {
+        vigilando = false;
+        estadoNodo.textContent = e.message || 'La autorización está, pero falló la creación de la carpeta. Tocá «Autorizar» para reintentar.';
+      }
+    }
+  };
+
+  /* --- paso 4: listo --- */
   const paso4 = (resp) => {
     clear(contenedor).append(tarjetaPaso(4, '¡Institución creada!', [
       el('p', { class: 'small' },
-        'Quedó todo en tu Google Drive: la carpeta, las planillas y el formulario para docentes. Vos administrás los accesos.'),
+        'Quedó todo en el Google Drive de la institución: la carpeta, las planillas y el formulario para docentes. Esa cuenta administra los accesos.'),
       el('div', { class: 'row' }, [
-        resp.carpetaUrl ? el('a', { class: 'btn btn-sm', href: resp.carpetaUrl, target: '_blank', rel: 'noopener' }, '📁 Mi carpeta en Drive') : null,
+        resp.carpetaUrl ? el('a', { class: 'btn btn-sm', href: resp.carpetaUrl, target: '_blank', rel: 'noopener' }, '📁 Carpeta en Drive') : null,
         resp.formUrl ? el('a', { class: 'btn btn-sm', href: resp.formUrl, target: '_blank', rel: 'noopener' }, '📋 Formulario docente') : null,
       ]),
       (resp.administradores || []).length ? el('p', { class: 'small muted' },
         `Administradores: ${resp.administradores.map(a => a.email).join(' · ')}`) : null,
       el('p', { class: 'small muted' },
-        'Desde Configuración vas a poder copiar el enlace de invitación para el resto del equipo.'),
+        'Desde Configuración se copia el enlace de invitación para el resto del equipo.'),
       el('button', {
         class: 'btn btn-primary', type: 'button',
         onclick: () => pantallaIngreso(contenedor, institucionActiva(), alEntrar),
-      }, 'Ingresar con mi cuenta →'),
+      }, 'Ingresar →'),
     ]));
   };
 
