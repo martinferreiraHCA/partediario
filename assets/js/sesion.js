@@ -15,7 +15,7 @@
  */
 
 import { apiPost, configPublica } from './api.js';
-import { getSettings, setSettings } from './settings.js';
+import { getSettings, setSettings, recordarInstitucion } from './settings.js';
 import { tokenVigente, datosDelToken, olvidarCuenta, pedirCredencial } from './google.js';
 
 export const PERMISOS_POR_ROL = {
@@ -91,6 +91,8 @@ export async function obtenerClientId() {
     // Antes de la configuración inicial el backend todavía no publica el ID de
     // cliente: en ese caso vale el que trae la aplicación de fábrica.
     const clientId = resp.clientId || guardado;
+    // El nombre de la institución lo dice su propio backend.
+    if (resp.liceo) recordarInstitucion(resp.liceo, getSettings().apiUrl);
     if (clientId !== guardado) setSettings({ clientId });
     sesion.clientId = clientId;
     sesion.instalado = resp.instalado !== false;

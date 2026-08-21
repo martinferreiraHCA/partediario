@@ -2,7 +2,7 @@
 
 import { $, $$, el, clear, hoyISO } from './utils.js';
 import { estado, cargar, suscribir, iniciarAutoRefresh } from './db.js';
-import { getSettings } from './settings.js';
+import { getSettings, recordarInstitucion, urlDesdeInvitacion, institucionActiva } from './settings.js';
 import { aviso, avisoError, cerrarModal } from './ui.js';
 import { sesion, resolverSesion, puede, ETIQUETA_ROL } from './sesion.js';
 import { resumenDelDia } from './logica.js';
@@ -90,7 +90,7 @@ async function dibujar() {
     marcarNav(rutaActual.vista);
 
     if (necesitaAcceso()) {
-      ctx.setTitulo('Acceso', 'Identificate para trabajar con la carpeta del liceo');
+      ctx.setTitulo('Acceso', 'Ingresá con tu cuenta de Google');
       vistaAcceso.render(host, { alEntrar: () => { actualizarChrome(); dibujar(); } });
       return;
     }
@@ -152,7 +152,11 @@ function actualizarChrome() {
   const conn = $('#conn-state');
   const etiqueta = conn.querySelector('.conn-label');
   conn.classList.remove('ok', 'demo', 'error');
-  if (estado.meta.error) {
+  if (modo === 'google' && !apiUrl) {
+    conn.classList.add('demo');
+    etiqueta.textContent = 'Sin institución conectada';
+    conn.title = 'Conectate con el enlace de invitación de tu institución.';
+  } else if (estado.meta.error) {
     conn.classList.add('error');
     etiqueta.textContent = 'Sin conexión con Google';
     conn.title = estado.meta.error;
@@ -166,9 +170,12 @@ function actualizarChrome() {
     conn.title = 'Los datos se guardan sólo en este navegador.';
   }
 
-  $('#brand-liceo').textContent = sesion.modo === 'google' && sesion.autenticado
-    ? `${estado.config.liceo || 'Liceo'} · ${ETIQUETA_ROL[sesion.rol] || sesion.rol}`
-    : (estado.config.liceo || 'Liceo');
+  const inst = institucionActiva();
+  $('#brand-liceo').textContent = sesion.modo === 'google'
+    ? (sesion.autenticado
+        ? `${estado.config.liceo || (inst && inst.nombre) || 'Institución'} · ${ETIQUETA_ROL[sesion.rol] || sesion.rol}`
+        : ((inst && inst.nombre) || 'Sin institución conectada'))
+    : `${estado.config.liceo || 'Liceo'} · demostración`;
 
   const resumen = resumenDelDia(estado, hoyISO());
   const pendientes = estado.inasistencias.filter(i => i.estado === 'nueva').length;
@@ -214,6 +221,14 @@ async function iniciar() {
     dibujar();
   });
 
+  // Enlace de invitación: #/acceso?inst=<url> conecta este navegador con la
+  // institución sin mostrar ninguna configuración.
+  const invitacion = urlDesdeInvitacion(location.hash);
+  if (invitacion) {
+    recordarInstitucion('', invitacion);
+    history.replaceState(null, '', location.pathname + '#/inicio');
+  }
+
   rutaActual = leerRuta();
   if (!location.hash) location.hash = '#/inicio';
 
@@ -223,8 +238,8 @@ async function iniciar() {
     console.warn('[sesion]', e);
   }
   await cargar();
-  if (estado.meta.error) {
-    avisoError(`No se pudo leer el backend de Google: ${estado.meta.error}`);
+  if (estado.meta.error && getSettings().apiUrl) {
+    avisoError(`No se pudo leer la información de la institución: ${estado.meta.error}`);
   }
   actualizarChrome();
   iniciarAutoRefresh();

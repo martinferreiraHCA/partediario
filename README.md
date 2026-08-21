@@ -3,11 +3,12 @@
 Aplicación web para **horarios institucionales, inasistencias docentes, coberturas y parte diario**.
 
 El frontend es estático (HTML + CSS + JavaScript, sin build ni dependencias) y se publica en **GitHub Pages**.
-Toda la información vive en **una única carpeta de Google Drive**: allí están la configuración, los usuarios,
-los horarios, las inasistencias y los partes diarios. Un proyecto de **Google Apps Script** publicado como
-aplicación web es el que lee y escribe esa carpeta y expone un API JSON.
+Es **multiinstitución**: cada liceo tiene su propia carpeta en el **Google Drive de quien lo dirige**, con su
+configuración, sus usuarios, sus horarios, sus inasistencias y sus partes diarios. Un proyecto de
+**Google Apps Script** implementado desde esa misma cuenta lee y escribe la carpeta y expone un API JSON.
 
-> La aplicación no es la base de datos: es la ventana para trabajar cómodamente con lo que ocurre en Drive.
+> La aplicación no es la base de datos: es la ventana. La soberanía de los datos la tiene cada institución
+> —dueña de su carpeta, de sus planillas y de sus accesos—, no quien mantiene este sitio.
 
 ## Qué resuelve
 
@@ -49,12 +50,18 @@ Estructura que se crea en Drive con la configuración inicial:
    └── 05 · Exportaciones    → copias y respaldos
 ```
 
-## Configuración de fábrica
+## Cómo se organiza
 
-La aplicación ya viene apuntando al backend del liceo: la URL de Apps Script y el ID de cliente de
-Google están en las constantes `BACKEND` y `CLIENT_ID`, arriba de `assets/js/settings.js`. Quien abre
-la página sólo tiene que ingresar con su cuenta de Google. Si se vuelve a implementar el backend o se
-cambia el proyecto de Google Cloud, se actualizan esas dos constantes.
+- **Superadministradores del sitio** (constante `SUPER_ADMINS` en `assets/js/settings.js`): las únicas
+  cuentas que pueden usar el asistente «Crear institución». No tienen acceso a los datos de ninguna
+  institución por ese solo hecho.
+- **Administrador de cada institución**: la cuenta de Google que implementa el Apps Script. Es dueña de
+  la carpeta de Drive y decide quién entra; puede incluso quitar a los superadministradores de su hoja
+  de usuarios.
+- **El equipo de la institución** se conecta con un **enlace de invitación** (se copia desde
+  Configuración) y entra con su cuenta de Google, sin ver ninguna configuración técnica.
+- El **ID de cliente OAuth** es único del sitio (`CLIENT_ID_SITIO`), porque pertenece al origen web,
+  no a una institución.
 
 ## Probarla sin configurar nada
 
@@ -62,19 +69,21 @@ Abrí la aplicación publicada y usá el **modo demostración**: genera un horar
 inasistencia y un parte diario de ejemplo, guardados sólo en tu navegador. Sirve para recorrer todas
 las pantallas antes de conectar Google.
 
-## Puesta en marcha
+## Alta de una institución
 
-1. **Publicar el frontend**: en el repositorio, *Settings → Pages → Source: GitHub Actions*
-   (el workflow `.github/workflows/pages.yml` ya está incluido) o *Deploy from branch* apuntando a la raíz.
-2. **Crear el ID de cliente OAuth** de Google, con el origen de tu GitHub Pages.
-3. **Crear el backend en Drive**: seguí [`docs/instalacion.md`](docs/instalacion.md).
-   Resumen: crear un proyecto de Apps Script, pegar `apps-script/Codigo.gs`, implementarlo como
-   aplicación web y ejecutar la **configuración inicial** desde la pantalla *Configuración*.
-4. **Cargar el horario del año**: *Horarios institucionales → Subir horario* (XLSX, ODS o CSV).
-5. **Dar accesos**: *Configuración → Usuarios y accesos*. Se entra **únicamente con cuenta de Google**
-   y sólo si el correo figura en la hoja «Usuarios»; una misma persona puede tener **varios correos
-   asociados** (institucional y personal). La instalación deja creados los administradores definidos
-   en `ADMINISTRADORES_INICIALES`, arriba de `apps-script/Codigo.gs`.
+La hace un superadministrador junto con quien dirige el liceo, desde la propia aplicación
+(**Crear institución** en la pantalla de acceso). El asistente guía los cuatro pasos: la institución
+implementa `apps-script/Codigo.gs` como aplicación web **desde su cuenta de Google**, se verifica la
+URL, se le pone nombre y el sistema crea la carpeta en **su** Drive. Su cuenta queda como
+administradora automáticamente. El detalle está en [`docs/instalacion.md`](docs/instalacion.md).
+
+Después, cada institución por su cuenta:
+
+1. **Da accesos** en *Configuración → Usuarios y accesos*: se entra únicamente con cuenta de Google y
+   sólo si el correo figura en la hoja «Usuarios»; una persona puede tener varios correos asociados.
+2. **Comparte el enlace de invitación** con su equipo (*Configuración → Copiar enlace de invitación*).
+3. **Carga el horario del año**: *Horarios institucionales → Subir horario* (XLSX, ODS o CSV).
+4. **Difunde el formulario** de aviso a sus docentes, que no necesitan usuario.
 
 ## Roles
 
@@ -88,12 +97,13 @@ las pantallas antes de conectar Google.
 | Docente | Consulta de horarios |
 
 Los roles se definen en la hoja **Usuarios** de la planilla de configuración, dentro de la carpeta de
-Drive. Cada fila admite un correo principal y una lista de correos adicionales, de modo que una misma
-persona entre con cualquiera de sus cuentas de Google y conserve su rol.
+Drive de cada institución. Cada fila admite un correo principal y una lista de correos adicionales, de
+modo que una misma persona entre con cualquiera de sus cuentas de Google y conserve su rol.
 
-El ingreso se resuelve así: el navegador obtiene un ID token de Google, el backend lo verifica contra
-`oauth2.googleapis.com/tokeninfo`, comprueba que el `aud` coincida con el ID de cliente configurado y
-busca el correo entre los usuarios autorizados. Si no está, no entra: no hay contraseñas ni códigos.
+El ingreso se resuelve así: el navegador obtiene un ID token de Google, el backend de la institución lo
+verifica contra `oauth2.googleapis.com/tokeninfo`, comprueba que el `aud` coincida con el ID de cliente
+del sitio y busca el correo entre sus usuarios autorizados. Si no está, no entra: no hay contraseñas ni
+códigos, y cada institución sólo conoce a su propia gente.
 
 ## Estructura del repositorio
 

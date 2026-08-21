@@ -103,6 +103,13 @@ export async function cargar({ silencioso = false } = {}) {
   estado.meta.modo = modo;
   estado.meta.error = '';
   if (modo === 'google') {
+    if (!getSettings().apiUrl) {
+      // Todavía no hay institución conectada en este navegador.
+      aplicarPaquete({});
+      estado.config.liceo = '';
+      notificar('carga');
+      return estado;
+    }
     try {
       const resp = await apiPost('estado');
       aplicarPaquete(resp.datos || resp);

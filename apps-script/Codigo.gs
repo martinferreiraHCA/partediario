@@ -54,24 +54,6 @@ var ENCABEZADOS = {
     'cobertura', 'observaciones', 'origen', 'editado', 'inasistenciaId', 'cerrado'],
 };
 
-/**
- * Personas que quedan como administradoras al ejecutar la configuración inicial.
- * Se puede editar acá antes de instalar, o cambiar después desde la aplicación
- * o directamente en la hoja «Usuarios» de la carpeta de Drive.
- */
-var ADMINISTRADORES_INICIALES = [
-  {
-    nombre: 'Florencia Austria',
-    email: 'florenciaaustria03@gmail.com',
-    emailsAdicionales: '',
-  },
-  {
-    nombre: 'Martín Ferreira',
-    email: 'martinfp642@gmail.com',
-    emailsAdicionales: 'martinferreira@hca.edu.uy',
-  },
-];
-
 var PERMISOS_POR_ROL = {
   admin: ['verInasistencias', 'editarInasistencias', 'verHorarios', 'editarHorarios',
     'verParte', 'editarParte', 'exportar', 'administrar'],
@@ -168,7 +150,7 @@ function manejar(params) {
       if (estaInstalado() && !tienePermiso(usuario, 'administrar')) {
         return responder({ ok: false, error: 'Sólo un administrador puede volver a ejecutar la configuración inicial.' });
       }
-      return responder(instalar(params.liceo, params.carpetaId, params.clientId));
+      return responder(instalar(params.liceo, params.carpetaId, params.clientId, params.administradores));
     }
 
     if (!estaInstalado()) {
@@ -277,7 +259,7 @@ function planillaEn(carpeta, nombre) {
   return ss;
 }
 
-function instalar(nombreLiceo, carpetaId, clientId) {
+function instalar(nombreLiceo, carpetaId, clientId, administradoresExtra) {
   var liceo = (nombreLiceo || 'Liceo').trim() || 'Liceo';
   var raiz;
   if (carpetaId) {
@@ -336,8 +318,9 @@ function instalar(nombreLiceo, carpetaId, clientId) {
   // Formulario de aviso de inasistencia.
   var form = asegurarFormulario(cInasistencias, ssInas, liceo);
 
-  // Administradores iniciales: sin correo registrado nadie puede entrar.
-  var administradores = altaAdministradoresIniciales();
+  // Quien instala es la persona dueña de esta institución: su cuenta queda
+  // como administradora, más las que haya indicado en el asistente.
+  var administradores = altaAdministradoresIniciales(administradoresExtra);
 
   asegurarDisparadores();
 
@@ -635,31 +618,36 @@ function guardarUsuario(usuario) {
 }
 
 /**
- * Da de alta a los administradores iniciales (y a la cuenta que instala, que de
- * todos modos es dueña de la carpeta de Drive). No pisa a quien ya exista.
+ * Da de alta como administradores a la cuenta que instala (dueña de la carpeta
+ * de Drive de esta institución) y a las personas indicadas en el asistente.
+ * No pisa a quien ya exista.
  */
-function altaAdministradoresIniciales() {
+function altaAdministradoresIniciales(extras) {
   var existentes = leerUsuarios();
   var registrados = {};
   for (var i = 0; i < existentes.length; i++) {
     for (var e = 0; e < existentes[i].emails.length; e++) registrados[existentes[i].emails[e]] = true;
   }
 
-  var pendientes = ADMINISTRADORES_INICIALES.slice();
+  var pendientes = [];
   var cuentaInstala = '';
   try { cuentaInstala = String(Session.getEffectiveUser().getEmail() || '').toLowerCase(); } catch (e2) { cuentaInstala = ''; }
-  if (cuentaInstala && !registrados[cuentaInstala]) {
-    var yaEnLista = false;
-    for (var p = 0; p < pendientes.length; p++) {
-      var correos = (pendientes[p].email + ',' + (pendientes[p].emailsAdicionales || '')).toLowerCase();
-      if (correos.indexOf(cuentaInstala) >= 0) yaEnLista = true;
-    }
-    if (!yaEnLista) {
+  if (cuentaInstala) {
+    pendientes.push({
+      nombre: 'Administrador de la institución',
+      email: cuentaInstala,
+      emailsAdicionales: '',
+      observaciones: 'Cuenta que creó la institución; es dueña de la carpeta de Drive.',
+    });
+  }
+  if (Object.prototype.toString.call(extras) === '[object Array]') {
+    for (var x = 0; x < extras.length; x++) {
+      var extra = extras[x] || {};
       pendientes.push({
-        nombre: 'Cuenta que instaló el sistema',
-        email: cuentaInstala,
-        emailsAdicionales: '',
-        observaciones: 'Es dueña de la carpeta de Drive. Se puede quitar desde la hoja «Usuarios».',
+        nombre: String(extra.nombre || 'Administrador'),
+        email: String(extra.email || ''),
+        emailsAdicionales: String(extra.emailsAdicionales || ''),
+        observaciones: 'Administrador indicado al crear la institución',
       });
     }
   }
@@ -678,7 +666,7 @@ function altaAdministradoresIniciales() {
       observaciones: admin.observaciones || 'Administrador inicial',
     });
     registrados[correo] = true;
-    altas.push({ nombre: admin.nombre, email: correo, emailsAdicionales: admin.emailsAdicionales || '' });
+    altas.push({ nombre: admin.nombre, email: correo });
   }
   return altas;
 }

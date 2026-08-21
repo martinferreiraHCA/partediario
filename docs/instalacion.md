@@ -1,12 +1,55 @@
-# Instalación
+# Alta de una institución
 
-Hay dos partes: **la carpeta de Google Drive** (donde vive todo) y **la aplicación en GitHub Pages**
-(la ventana para trabajar con ella). La configuración inicial se hace una sola vez.
+El sistema es multiinstitución: **cada liceo guarda sus datos en el Google Drive de quien lo dirige**.
+Este documento describe cómo se crea una institución nueva. Lo hace un **superadministrador del sitio**
+(definidos en `SUPER_ADMINS`, en `assets/js/settings.js`) junto con la persona que va a administrar el
+liceo, porque hay pasos que sólo pueden hacerse desde la cuenta de Google de la institución.
 
 Al sistema se entra **únicamente con cuenta de Google**, y sólo si ese correo figura en la hoja
-«Usuarios» de la carpeta. No hay contraseñas ni códigos.
+«Usuarios» de la institución. No hay contraseñas ni códigos.
 
 ---
+
+## Cómo se crea una institución (asistente)
+
+1. Quien dirige el liceo entra a [script.google.com](https://script.google.com) **con la cuenta de
+   Google de la institución**, crea un *Nuevo proyecto*, pega el contenido de
+   [`apps-script/Codigo.gs`](../apps-script/Codigo.gs) y guarda.
+2. **Implementar → Nueva implementación → Aplicación web**: ejecutar como **Yo**, acceso
+   **Cualquier usuario**. Acepta los permisos y copia la **URL de la aplicación web** (`…/exec`).
+3. Un superadministrador abre la aplicación → **Crear institución**, se identifica con su cuenta de
+   Google y sigue el asistente: pega esa URL, pone el nombre del liceo y confirma.
+4. El sistema crea la carpeta con las planillas y el formulario **en el Drive de la institución**.
+   La cuenta que implementó el proyecto queda como **administradora y dueña de todo**; el equipo del
+   sitio queda precargado como administrador para poder asistirla, y **puede quitarse en cualquier
+   momento** desde Usuarios: la soberanía de los datos es de la institución.
+
+La estructura creada:
+
+```text
+📁 Gestión Educativa – <Liceo>
+   ├── 01 · Configuración    → planilla «Configuración» (General, Usuarios, Turnos, Años, Motivos)
+   ├── 02 · Horarios         → planilla «Horarios» + carpeta «Originales»
+   ├── 03 · Inasistencias    → formulario docente + planilla de avisos
+   ├── 04 · Partes diarios   → planilla «Partes diarios» + un archivo por día (AAAA/MM)
+   └── 05 · Exportaciones    → copias y respaldos
+```
+
+## Cómo se suma el equipo
+
+- El administrador agrega a cada persona en **Configuración → Usuarios y accesos** (correo de Google,
+  rol, correos adicionales si tiene varios).
+- Les comparte el **enlace de invitación** (*Configuración → Copiar enlace de invitación*). Quien lo
+  abre queda conectado a esa institución y entra con su cuenta de Google. Nadie ve URLs ni
+  configuración técnica.
+- Un mismo navegador puede tener varias instituciones conectadas y cambiar entre ellas desde la
+  pantalla de acceso.
+
+---
+
+# Puesta en marcha del sitio (una sola vez)
+
+Lo que sigue es del mantenimiento del sitio, no de las instituciones.
 
 ## 1. Publicar la aplicación en GitHub Pages
 
@@ -41,115 +84,17 @@ verifique quién está entrando.
    - En **Orígenes autorizados de JavaScript** agregá exactamente el origen del paso 1,
      por ejemplo `https://<usuario>.github.io`.
    - No hace falta configurar URI de redireccionamiento ni usar el secreto de cliente.
-4. Copiá el **ID de cliente** (`…apps.googleusercontent.com`). Lo vas a pegar en el paso 4.
+4. Copiá el **ID de cliente** (`…apps.googleusercontent.com`) y ponelo en la constante
+   `CLIENT_ID_SITIO` de `assets/js/settings.js`. Es único para todo el sitio: los asistentes de
+   creación se lo pasan automáticamente a cada institución.
+
+> Con la pantalla de consentimiento en modo **Externo** sin publicar, sólo entran las cuentas
+> agregadas como *usuarios de prueba*. Para que cualquier cuenta de Google pueda ingresar, publicá la
+> aplicación (**Publicar aplicación** en la pantalla de consentimiento).
 
 ---
 
-## 3. Crear el proyecto de Apps Script
-
-1. Entrá a [script.google.com](https://script.google.com) con la misma cuenta.
-2. **Nuevo proyecto** y ponele un nombre, por ejemplo `Gestión Educativa – Liceo N.º 5`.
-3. Borrá el contenido de `Código.gs` y pegá [`apps-script/Codigo.gs`](../apps-script/Codigo.gs).
-4. Arriba de todo del archivo está la constante `ADMINISTRADORES_INICIALES`: revisá que estén las
-   personas correctas antes de instalar (ver paso 5).
-5. Opcional: en **Configuración del proyecto** activá *Mostrar el archivo de manifiesto
-   `appsscript.json`* y pegá el contenido de [`apps-script/appsscript.json`](../apps-script/appsscript.json).
-
-### Implementar como aplicación web
-
-1. **Implementar → Nueva implementación**.
-2. Tipo: **Aplicación web**.
-3. *Ejecutar como*: **Yo** (tu cuenta será la dueña de la carpeta y de los archivos).
-4. *Quién tiene acceso*: **Cualquier usuario**.
-   Es necesario porque una página estática no puede autenticarse con la sesión de Google del
-   navegador contra Apps Script. El control de acceso real lo hace el sistema: verifica el ID token
-   de Google y exige que ese correo esté en la hoja «Usuarios».
-5. Copiá la **URL de la aplicación web** (termina en `/exec`).
-6. La primera vez Google pide autorización: aceptá los permisos de Drive, Hojas de cálculo,
-   Formularios y disparadores.
-
----
-
-## 4. Ejecutar la configuración inicial
-
-1. Abrí la aplicación publicada → **Configuración**.
-2. En *Conexión con Google Drive*: modo **Google Drive (Apps Script)**, pegá la URL `/exec` y tocá
-   **Probar conexión** (tiene que responder «Conexión correcta»).
-
-   > En este repositorio la URL del backend y el ID de cliente ya vienen cargados de fábrica
-   > (constantes `BACKEND` y `CLIENT_ID`, arriba de `assets/js/settings.js`), así que los campos
-   > aparecen completos. Si algún día se crea una implementación nueva de Apps Script o se cambia el
-   > proyecto de Google Cloud, se actualizan ahí y listo: nadie tiene que pegar direcciones a mano.
-3. En *Configuración inicial en Drive* completá:
-   - **Nombre del liceo**.
-   - **ID de cliente OAuth** (el del paso 2). Cargalo acá: una vez instalado, el sistema sólo acepta
-     cuentas autorizadas, y sin ID de cliente nadie podría ingresar para configurarlo.
-   - *Carpeta existente*: sólo si ya tenés una carpeta y querés usar esa (pegá su ID, que es la parte
-     final de su URL en Drive).
-4. **Ejecutar configuración inicial**.
-
-Se crea la carpeta con todo adentro:
-
-```text
-📁 Gestión Educativa – <Liceo>
-   ├── 01 · Configuración    → planilla «Configuración» (General, Usuarios, Turnos, Años, Motivos)
-   ├── 02 · Horarios         → planilla «Horarios» + carpeta «Originales»
-   ├── 03 · Inasistencias    → formulario docente + planilla de avisos
-   ├── 04 · Partes diarios   → planilla «Partes diarios» + un archivo por día (AAAA/MM)
-   └── 05 · Exportaciones    → copias y respaldos
-```
-
-Al terminar, la pantalla muestra los enlaces a la carpeta, a la configuración, al formulario y a la
-planilla de respuestas, y la lista de administradores dados de alta. Ya podés cerrar sesión y entrar
-con **Acceder con Google**.
-
-> También podés ejecutar `configuracionInicial()` desde el editor de Apps Script.
-> Si te salteaste el ID de cliente, cargalo con la función `definirClientId('…apps.googleusercontent.com')`
-> desde el editor, o escribiéndolo a mano en la hoja «General» del archivo de configuración
-> (fila `clientId`).
-
----
-
-## 5. Usuarios y accesos
-
-La configuración inicial deja creados los **administradores**:
-
-| Nombre | Correos de Google |
-| --- | --- |
-| Florencia Austria | `florenciaaustria03@gmail.com` |
-| Martín Ferreira | `martinfp642@gmail.com` · `martinferreira@hca.edu.uy` |
-
-Están definidos en `ADMINISTRADORES_INICIALES`, arriba de todo en `apps-script/Codigo.gs`: se puede
-editar la lista antes de instalar. Si la cuenta que ejecuta la configuración inicial no es ninguna de
-ésas, se agrega también como administradora —es la dueña de la carpeta de Drive, así que de todos
-modos tiene acceso completo a los archivos—; se puede quitar después desde la hoja «Usuarios».
-
-En **Configuración → Usuarios y accesos** (o directamente en la hoja «Usuarios») agregá al resto:
-
-| Columna | Contenido |
-| --- | --- |
-| `id` | Identificador interno (se genera solo) |
-| `nombre` | Nombre y apellido |
-| `email` | Correo principal de Google con el que entra (obligatorio) |
-| `emailsAdicionales` | **Otros correos de la misma persona**, separados por coma |
-| `rol` | `admin`, `direccion`, `adscripcion`, `administrativo`, `psicologia`, `docente` o `lectura` |
-| `activo` | `sí` / `no` — permite dar de baja un acceso sin borrar la fila |
-| `observaciones` | Texto libre |
-
-**Varios correos por persona.** Es habitual tener la cuenta institucional y además una personal, o
-cambiar de dominio. Poné la habitual en `email` y las demás en `emailsAdicionales` (por ejemplo
-`martinferreira@hca.edu.uy`): con cualquiera de ellas entra al mismo usuario, con el mismo rol y el
-mismo historial. Los correos no distinguen mayúsculas.
-
-Quien no figure en la hoja recibe un mensaje claro: su cuenta no está autorizada y tiene que pedirle
-el alta a un administrador.
-
-> **Bajas**: poné `activo` en `no` (o borrá la fila) cuando alguien deja el cargo. El efecto es
-> inmediato: sin fila activa, esa cuenta de Google deja de tener acceso.
-
----
-
-## 6. Cargar el horario institucional
+## 3. Cargar el horario institucional (por institución)
 
 1. **Horarios institucionales → Subir horario** en el año que corresponda.
 2. Formatos: **XLSX**, **ODS** o **CSV**, en cualquiera de estas dos disposiciones:
@@ -165,7 +110,7 @@ Exportá el horario a planilla antes de subirlo.
 
 ---
 
-## 7. Formulario para docentes
+## 4. Formulario para docentes
 
 La configuración inicial crea el formulario **«Aviso de inasistencia docente»** dentro de
 `03 · Inasistencias`, ya vinculado a la planilla de respuestas y con un disparador que copia cada
@@ -182,7 +127,7 @@ respuesta a la hoja «Inasistencias».
 
 ---
 
-## 8. Mantenimiento
+## 5. Mantenimiento
 
 - **Actualizar el backend**: pegá la nueva versión de `Codigo.gs` y creá una implementación nueva
   (o actualizá la existente). La URL `/exec` se mantiene si actualizás la misma implementación.
